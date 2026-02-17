@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiokafka>=0.13.0",
+    "kafka-python>=2.3.0",
     "mcp>=1.26.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
