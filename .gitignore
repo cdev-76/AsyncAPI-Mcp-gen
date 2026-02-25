@@ -210,3 +210,5 @@ scripts
 backups
 node_modules
 __transpiled
+
+generated-code

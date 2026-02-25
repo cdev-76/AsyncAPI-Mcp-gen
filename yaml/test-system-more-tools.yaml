@@ -1,0 +1,131 @@
+asyncapi: 3.0.0
+info:
+  title: Test System MCP API
+  version: 1.0.0
+  description: API for the MCP server that registers various system events in Kafka.
+defaultContentType: application/json
+
+servers:
+  local-kafka:
+    host: 'localhost:9092'
+    protocol: kafka
+    description: Local test broker.
+
+channels:
+  userLoginChannel:
+    address: 'user-login'
+    description: Kafka topic where user login events are published.
+    messages:
+      userLogin:
+        $ref: '#/components/messages/userLoginMessage'
+        
+  userLogoutChannel:
+    address: 'user-logout'
+    description: Kafka topic where user logout events are published.
+    messages:
+      userLogout:
+        $ref: '#/components/messages/userLogoutMessage'
+
+  systemAlertChannel:
+    address: 'system-alerts'
+    description: Kafka topic for critical system alerts.
+    messages:
+      systemAlert:
+        $ref: '#/components/messages/systemAlertMessage'
+
+operations:
+  # --- TOOL 1: Login ---
+  sendUserLogin:
+    action: send
+    summary: Sends a user login event to the Kafka broker.
+    channel:
+      $ref: '#/channels/userLoginChannel'
+    messages:
+      - $ref: '#/channels/userLoginChannel/messages/userLogin'
+
+  # --- TOOL 2: Logout ---
+  sendUserLogout:
+    action: send
+    summary: Sends a user logout event to the Kafka broker.
+    channel:
+      $ref: '#/channels/userLogoutChannel'
+    messages:
+      - $ref: '#/channels/userLogoutChannel/messages/userLogout'
+
+  # --- TOOL 3: System Alert ---
+  sendSystemAlert:
+    action: send
+    summary: Sends a critical system alert to the Kafka broker.
+    channel:
+      $ref: '#/channels/systemAlertChannel'
+    messages:
+      - $ref: '#/channels/systemAlertChannel/messages/systemAlert'
+
+components:
+  messages:
+    # Payload para Tool 1
+    userLoginMessage:
+      name: userLogin
+      title: User Login Event
+      payload:
+        type: object
+        required:
+          - event
+          - name
+          - surname
+          - status
+        properties:
+          event:
+            type: string
+            example: "USER_LOGIN"
+          name:
+            type: string
+            example: "Jorge"
+          surname:
+            type: string
+            example: "Fernandez"
+          status:
+            type: string
+            example: "active"
+            
+    # Payload para Tool 2
+    userLogoutMessage:
+      name: userLogout
+      title: User Logout Event
+      payload:
+        type: object
+        required:
+          - event
+          - username
+          - reason
+        properties:
+          event:
+            type: string
+            example: "USER_LOGOUT"
+          username:
+            type: string
+            example: "jfernandez"
+          reason:
+            type: string
+            example: "timeout"
+            
+    # Payload para Tool 3
+    systemAlertMessage:
+      name: systemAlert
+      title: System Alert Event
+      payload:
+        type: object
+        required:
+          - alertType
+          - message
+          - severity
+        properties:
+          alertType:
+            type: string
+            example: "DATABASE_CONNECTION_LOST"
+          message:
+            type: string
+            example: "Timeout waiting for DB response"
+          severity:
+            type: string
+            example: "HIGH"

@@ -2,19 +2,19 @@ asyncapi: 3.0.0
 info:
   title: Test System MCP API
   version: 1.0.0
-  description: API básica para el servidor MCP que registra logins de usuarios en Kafka.
+  description: Basic API for the MCP server that registers user logins in Kafka.
 defaultContentType: application/json
 
 servers:
   local-kafka:
     host: 'localhost:9092'
     protocol: kafka
-    description: Broker local de pruebas.
+    description: Local test broker.
 
 channels:
   testSystemChannel:
     address: 'test-system'
-    description: Topic de Kafka donde se publican los eventos del sistema.
+    description: Kafka topic where system events are published.
     messages:
       userLogin:
         $ref: '#/components/messages/userLoginMessage'
@@ -22,7 +22,7 @@ channels:
 operations:
   sendUserLogin:
     action: send
-    summary: Envía un evento de login de usuario al broker de Kafka.
+    summary: Sends a user login event to the Kafka broker.
     channel:
       $ref: '#/channels/testSystemChannel'
     messages:
@@ -32,7 +32,7 @@ components:
   messages:
     userLoginMessage:
       name: userLogin
-      title: Evento de Login de Usuario
+      title: User Login Event
       payload:
         type: object
         required:
