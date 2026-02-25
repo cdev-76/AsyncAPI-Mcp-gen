@@ -1,0 +1,14 @@
+{
+  "name": "asyncapi-mcp-kafka-template",
+  "version": "1.0.0",
+  "description": "Plantilla AsyncAPI para generar servidor MCP con Kafka",
+  "generator": {
+    "apiVersion": "v3",
+    "renderer": "react",
+    "parameters": {},
+    "supportedProtocols": ["kafka"]
+  },
+  "dependencies": {
+    "@asyncapi/generator-react-sdk": "^1.0.0"
+  }
+}

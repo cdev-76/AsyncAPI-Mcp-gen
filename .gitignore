@@ -208,3 +208,5 @@ __marimo__/
 
 scripts
 backups
+node_modules
+__transpiled
