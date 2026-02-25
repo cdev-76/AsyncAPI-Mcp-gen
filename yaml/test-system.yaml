@@ -1,0 +1,27 @@
+asyncapi: '3.0.0'
+info:
+  title: Sistema de Login MCP
+  version: '1.0.0'
+
+servers:
+  localhost:
+    host: localhost:9092
+    protocol: kafka
+
+channels:
+  test-system:
+    address: test-system
+    messages:
+      loginEvent:
+        payload:
+          type: object
+          properties:
+            nombre:
+              type: string
+            apellidos:
+              type: string
+    operations:
+      registrarLogin:
+        action: send
+        title: Registrar Login
+        summary: Registra un evento de inicio de sesión
