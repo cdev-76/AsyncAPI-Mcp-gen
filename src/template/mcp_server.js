@@ -12,8 +12,36 @@ export default function ({ asyncapi }) {
         const payloadSchema = operation.messages().all()[0].payload();
         const properties = payloadSchema.properties();
 
+        const propNames = Object.keys(properties);
+
+        const keyField = propNames.find(prop =>
+            ['id', 'username', 'userid', 'email', 'name'].includes(prop.toLowerCase())
+        );
+
+        // If there is no regular KeyField, gives a default key value
+        const pythonKey = keyField ? `str(${keyField})` : '"mcp_event"';
+
         // 1. Build function params (example: name:str, surname:str)
-        const funcParams = Object.keys(properties).map(propName => `${propName}: str`).join(', ');
+        const getPythonType = (asyncApiType) => {
+            const typeMap = {
+                'string': 'str',
+                'integer': 'int',
+                'number': 'float',
+                'boolean': 'bool',
+                'array': 'list',
+                'object': 'dict'
+            };
+            return typeMap[asyncApiType] || 'str'; // If there is no type, we asume str
+        };
+
+        const funcParams = propNames.map(propName => {
+            const prop = properties[propName];
+            // Extract each property tipe (if exists), if not: format to string
+            const propType = prop.type() ? String(prop.type()) : 'string';
+            const pyType = getPythonType(propType);
+
+            return `${propName}: ${pyType}`;
+        }).join(', ');
 
         // 2. Build data dictionary to send to kafka
         const dictEntries = Object.keys(properties).map(propName => `"${propName}": ${propName}`).join(',\n        ');
@@ -36,7 +64,7 @@ def ${operationId}(${funcParams}) -> str:
             topic='${channelAddress}',
             message=user_data,
             # Temporary generic key
-            key="mcp_event" 
+            key=${pythonKey} 
         )
         return f"Event successfully sent to ${channelAddress}."
     except Exception as e:
@@ -45,8 +73,8 @@ def ${operationId}(${funcParams}) -> str:
     }).join('\n'); // Join each generated function
 
     return (
-    <File name="mcp_server.py">
-      {`from fastmcp import FastMCP
+        <File name="mcp_server.py">
+            {`from fastmcp import FastMCP
 from kafka_producer import MyProducer
 
 mcp = FastMCP("AsyncAPI-Kafka-Server")
@@ -62,6 +90,6 @@ ${mcpTools}
 if __name__ == "__main__":
     mcp.run()
 `}
-    </File>
-  );
+        </File>
+    );
 }
