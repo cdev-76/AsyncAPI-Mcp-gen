@@ -53,3 +53,9 @@ components:
           status:
             type: string
             example: "active"
+          age:
+            type: integer
+            example: 35
+          isAdmin:
+            type: boolean
+            example: true

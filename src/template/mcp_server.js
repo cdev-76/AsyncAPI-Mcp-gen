@@ -22,7 +22,26 @@ export default function ({ asyncapi }) {
         const pythonKey = keyField ? `str(${keyField})` : '"mcp_event"';
 
         // 1. Build function params (example: name:str, surname:str)
-        const funcParams = Object.keys(properties).map(propName => `${propName}: str`).join(', ');
+        const getPythonType = (asyncApiType) => {
+            const typeMap = {
+                'string': 'str',
+                'integer': 'int',
+                'number': 'float',
+                'boolean': 'bool',
+                'array': 'list',
+                'object': 'dict'
+            };
+            return typeMap[asyncApiType] || 'str'; // If there is no type, we asume str
+        };
+
+        const funcParams = propNames.map(propName => {
+            const prop = properties[propName];
+            // Extract each property tipe (if exists), if not: format to string
+            const propType = prop.type() ? String(prop.type()) : 'string';
+            const pyType = getPythonType(propType);
+
+            return `${propName}: ${pyType}`;
+        }).join(', ');
 
         // 2. Build data dictionary to send to kafka
         const dictEntries = Object.keys(properties).map(propName => `"${propName}": ${propName}`).join(',\n        ');
