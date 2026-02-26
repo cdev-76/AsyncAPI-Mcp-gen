@@ -1,0 +1,137 @@
+asyncapi: 3.0.0
+info:
+  title: Temperature Sensors MCP API
+  version: 1.0.0
+  description: API for the MCP server that registers temperature sensor readings, alerts, and health status events in Kafka.
+defaultContentType: application/json
+
+servers:
+  local-kafka:
+    host: 'localhost:9092'
+    protocol: kafka
+    description: Local test broker for IoT sensor data.
+
+channels:
+  temperatureReadingsChannel:
+    address: 'sensor-temperature-readings'
+    description: Kafka topic where standard temperature readings are published periodically.
+    messages:
+      temperatureReading:
+        $ref: '#/components/messages/temperatureReadingMessage'
+        
+  temperatureAlertsChannel:
+    address: 'sensor-temperature-alerts'
+    description: Kafka topic for critical temperature threshold alerts (e.g., overheating).
+    messages:
+      temperatureAlert:
+        $ref: '#/components/messages/temperatureAlertMessage'
+
+  sensorStatusChannel:
+    address: 'sensor-status'
+    description: Kafka topic for sensor health and connectivity updates.
+    messages:
+      sensorStatus:
+        $ref: '#/components/messages/sensorStatusMessage'
+
+operations:
+  # --- TOOL 1: Temperature Reading ---
+  sendTemperatureReading:
+    action: send
+    summary: Sends a routine temperature reading to the Kafka broker.
+    channel:
+      $ref: '#/channels/temperatureReadingsChannel'
+    messages:
+      - $ref: '#/channels/temperatureReadingsChannel/messages/temperatureReading'
+
+  # --- TOOL 2: Temperature Alert ---
+  sendTemperatureAlert:
+    action: send
+    summary: Sends a critical temperature alert when thresholds are breached.
+    channel:
+      $ref: '#/channels/temperatureAlertsChannel'
+    messages:
+      - $ref: '#/channels/temperatureAlertsChannel/messages/temperatureAlert'
+
+  # --- TOOL 3: Sensor Status ---
+  sendSensorStatus:
+    action: send
+    summary: Sends sensor health and status events (like battery level).
+    channel:
+      $ref: '#/channels/sensorStatusChannel'
+    messages:
+      - $ref: '#/channels/sensorStatusChannel/messages/sensorStatus'
+
+components:
+  messages:
+    # Payload para Tool 1: Lectura estándar
+    temperatureReadingMessage:
+      name: temperatureReading
+      title: Temperature Reading Event
+      payload:
+        type: object
+        required:
+          - sensorId
+          - temperature
+          - unit
+          - timestamp
+        properties:
+          sensorId:
+            type: string
+            example: "TEMP-ZONE-A-001"
+          temperature:
+            type: number
+            example: 22.5
+          unit:
+            type: string
+            example: "Celsius"
+          timestamp:
+            type: string
+            format: date-time
+            example: "2026-02-26T10:22:18Z"
+            
+    # Payload para Tool 2: Alerta crítica
+    temperatureAlertMessage:
+      name: temperatureAlert
+      title: Temperature Alert Event
+      payload:
+        type: object
+        required:
+          - sensorId
+          - alertType
+          - currentTemperature
+          - threshold
+        properties:
+          sensorId:
+            type: string
+            example: "TEMP-ZONE-A-001"
+          alertType:
+            type: string
+            example: "HIGH_TEMPERATURE_WARNING"
+          currentTemperature:
+            type: number
+            example: 45.2
+          threshold:
+            type: number
+            example: 40.0
+            
+    # Payload para Tool 3: Estado del dispositivo
+    sensorStatusMessage:
+      name: sensorStatus
+      title: Sensor Status Event
+      payload:
+        type: object
+        required:
+          - sensorId
+          - status
+          - batteryLevel
+        properties:
+          sensorId:
+            type: string
+            example: "TEMP-ZONE-A-001"
+          status:
+            type: string
+            example: "ONLINE"
+          batteryLevel:
+            type: integer
+            description: "Battery percentage remaining"
+            example: 85
