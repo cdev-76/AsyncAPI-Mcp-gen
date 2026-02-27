@@ -1,0 +1,59 @@
+asyncapi: 3.0.0
+info:
+  title: Test System MCP API
+  version: 1.0.0
+  description: Basic API for the MCP server that registers user logins in Kafka.
+defaultContentType: application/json
+
+servers:
+  local-kafka:
+    host: 'localhost:9092'
+    protocol: kafka
+    description: Local test broker.
+
+channels:
+  testSystemChannel:
+    address: 'test-system'
+    description: Kafka topic where system events are published.
+    messages:
+      userLogin:
+        $ref: '#/components/messages/userLoginMessage'
+
+operations:
+  sendUserLogin:
+    action: send
+    summary: Sends a user login event to the Kafka broker.
+    channel:
+      $ref: '#/channels/testSystemChannel'
+    messages:
+      - $ref: '#/channels/testSystemChannel/messages/userLogin'
+
+components:
+  messages:
+    userLoginMessage:
+      name: userLogin
+      title: User Login Event
+      payload:
+        type: object
+        required:
+          - event
+          - name
+          - surname
+          - status
+        properties:
+          event:
+            type: string
+            description: "Must be exactly 'USER_LOGIN'"
+            example: "USER_LOGIN"
+          name:
+            type: string
+            description: "First name of the user logging in"
+            example: "Jorge"
+          surname:
+            type: string
+            description: "Last name of the user logging in"
+            example: "Fernandez"
+          status:
+            type: string
+            description: "Current account status (e.g., active, suspended)"
+            example: "active"
