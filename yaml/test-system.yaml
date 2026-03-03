@@ -21,6 +21,7 @@ channels:
 
 operations:
   sendUserLogin:
+    x-kafka-key: name
     action: send
     summary: Sends a user login event to the Kafka broker.
     channel:

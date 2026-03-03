@@ -13,6 +13,7 @@ export default function ({ asyncapi }) {
         const properties = payloadSchema.properties(); // Example: { command: [Schema Object], sentAt: [Schema Object] }
 
         const propNames = Object.keys(properties); // Example: ['command','sentAt']
+        const required = payloadSchema.required() || []; // Example: ['command']
 
         // Extract path params
         // Search for everything that is within brackets in channel's address
@@ -23,17 +24,22 @@ export default function ({ asyncapi }) {
         // Combine path parameters and payload properties to search for a potential key
         const potentialKeyFields = [...pathParams, ...propNames]; // Example: ['streetlightId','command','sentAt']
         
-        // Find the keyField by checking if the parameter name matches or ends with our target words
+        // Check for explicit x-kafka-key extension on the operation first
+        // Example in YAML: x-kafka-key: streetlightId
+        const explicitKey = operation.extensions().get('x-kafka-key')?.value();
+
+        // Otherwise, auto-detect by checking if the parameter name matches or ends with our target words
         // Example: 'streetlightId' will match because it ends with 'id' (lowercased)
-        const keyField = potentialKeyFields.find(prop => {
+        const detectedKey = potentialKeyFields.find(prop => {
             const lowerProp = prop.toLowerCase();
             return ['id', 'username', 'userid', 'email', 'name'].some(
                 keyword => lowerProp === keyword || lowerProp.endsWith(keyword)
             );
         });
 
-        // If there is no regular KeyField, gives a default key value
-        const pythonKey = keyField ? `str(${keyField})` : '"mcp_event"'; // Example: 'str(streetlightId)'
+        // Priority: explicit extension > auto-detected > None (Kafka round-robins across partitions)
+        const keyField = explicitKey || detectedKey;
+        const pythonKey = keyField ? `str(${keyField})` : 'None'; // Example: 'str(streetlightId)'
 
         // 1. Build function params. Example: streetlightId: str, command: str, sentAt: str
         const getPythonType = (asyncApiType) => {
@@ -53,8 +59,10 @@ export default function ({ asyncapi }) {
             // Extract each property type (if exists), if not: format to string
             const propType = prop.type() ? String(prop.type()) : 'string';
             const pyType = getPythonType(propType);
-            return `${propName}: ${pyType}`;
-        }); // Example: ['command: str', 'sentAt: str']
+            // Non-required fields become Optional with a None default
+            const isOptional = !required.includes(propName);
+            return isOptional ? `${propName}: Optional[${pyType}] = None` : `${propName}: ${pyType}`;
+        }); // Example: ['command: str', 'sentAt: Optional[str] = None']
 
         // Asume that URL params always enter as str
         const pathParamDefs = pathParams.map(param => `${param}: str`); // Example: ['streetlightId: str']
@@ -121,7 +129,8 @@ def ${operationId}(${funcParams}) -> str:
 
     return (
         <File name="mcp_server.py">
-            {`from fastmcp import FastMCP
+            {`from typing import Optional
+from fastmcp import FastMCP
 from kafka_producer import MyProducer
 
 mcp = FastMCP("AsyncAPI-Kafka-Server")
