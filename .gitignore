@@ -212,3 +212,5 @@ node_modules
 __transpiled
 
 generated-code
+
+.claude
