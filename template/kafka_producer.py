@@ -11,7 +11,7 @@ class MyProducer:
         :param bootstrap_servers: Kafka broker ip:port
         :type bootstrap_servers: list
         '''
-        # Producer object that conects to the kafka broker
+        # Producer object that connects to the kafka broker
         self.producer = KafkaProducer(bootstrap_servers=bootstrap_servers,
                             value_serializer=lambda v: json.dumps(v).encode('utf-8'),
                             key_serializer=str.encode)
@@ -42,15 +42,3 @@ class MyProducer:
         :param self: Self object
         '''
         self.producer.close()
-
-
-if __name__ == "__main__":
-    
-    productor = MyProducer(['localhost:9092'])
-    
-    datos_user1 = {'name':'Jorge','surname':'Fernandez'}
-    productor.send_event('test-system',datos_user1,'user1')
-    
-    productor.close() 
-    
-    print("Sent!")
