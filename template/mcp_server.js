@@ -5,6 +5,31 @@ export default function ({ asyncapi }) {
     // Temporary static //
     const serverHost = asyncapi.servers().all()[0].host();
 
+    // Builds a JSON Schema string from an AsyncAPI payload schema object
+    const buildJsonSchema = (payloadSchema, title) => {
+        const props = payloadSchema.properties();
+        const required = payloadSchema.required() || [];
+
+        const schemaProperties = {};
+        Object.keys(props).forEach(propName => {
+            const prop = props[propName];
+            const propDef = { type: prop.type() ? String(prop.type()) : 'string' };
+            if (prop.description()) propDef.description = String(prop.description());
+            schemaProperties[propName] = propDef;
+        });
+
+        const schema = {
+            '$schema': 'http://json-schema.org/draft-07/schema#',
+            title,
+            type: 'object',
+            properties: schemaProperties,
+        };
+        if (required.length > 0) schema.required = required;
+
+        // Escape single quotes so the JSON string is safe inside Python single-quoted strings
+        return JSON.stringify(schema).replace(/'/g, "\\'");
+    };
+
     const mcpTools = asyncapi.operations().all().map(operation => {
         // Extract topic and operation payload
         const operationId = operation.id(); // Example: lightTurnOn
@@ -15,6 +40,10 @@ export default function ({ asyncapi }) {
         const propNames = Object.keys(properties); // Example: ['command','sentAt']
         const required = payloadSchema.required() || []; // Example: ['command']
 
+        // Build JSON Schema string for Schema Registry registration
+        const schemaConstName = `SCHEMA_${operationId.toUpperCase()}`;
+        const schemaStr = buildJsonSchema(payloadSchema, operationId);
+
         // Extract path params
         // Search for everything that is within brackets in channel's address
         const pathParamsMatch = channelAddress.match(/\{([^}]+)\}/g) || []; // Example: ['{streetlightId}']
@@ -23,7 +52,7 @@ export default function ({ asyncapi }) {
 
         // Combine path parameters and payload properties to search for a potential key
         const potentialKeyFields = [...pathParams, ...propNames]; // Example: ['streetlightId','command','sentAt']
-        
+
         // Check for explicit x-kafka-key extension on the operation first
         // Example in YAML: x-kafka-key: streetlightId
         const explicitKey = operation.extensions().get('x-kafka-key')?.value();
@@ -73,8 +102,7 @@ export default function ({ asyncapi }) {
         // example: '"command": command,\n        "sentAt": sentAt'
 
         const operationSummary = operation.summary() || `Sends an event to the ${channelAddress} topic.`;
-        // example: 'Sends an event to the smartylighting.streetlights.1.0.action.{streetlightId}.turn.on topic.'
-        const operationDesc = operation.description() || ''; // For the example given, there is no description in the specification file
+        const operationDesc = operation.description() || '';
 
         let docstring = `"""\n    ${operationSummary}`;
         if (operationDesc) {
@@ -88,38 +116,32 @@ export default function ({ asyncapi }) {
             });
             propNames.forEach(propName => {
                 const prop = properties[propName];
-                // Take the current description from YAML file, if none, put a generic one 
                 const propDesc = prop.description() ? String(prop.description()).replace(/\n/g, ' ') : `The ${propName} parameter.`;
                 docstring += `        ${propName}: ${propDesc}\n`;
             });
         }
         docstring += `    """`;
-        // example (final docstring): 
-        // """
-        //     Sends an event to the smartylighting.streetlights.1.0.action.{streetlightId}.turn.on topic.
-        //
-        //     Args:
-        //         streetlightId: Parameter extracted from the topic path.
-        //         command: Whether to turn on or off the light.
-        //         sentAt: Date and time when the message was sent.
-        //     """
+
         return `
+${schemaConstName} = '${schemaStr}'
+
 @mcp.tool
 def ${operationId}(${funcParams}) -> str:
     ${docstring}
-    
+
     if kafka_client is None:
         return "Error: Kafka service is not available"
-    
+
     user_data = {
         ${dictEntries}
     }
 
     try:
         kafka_client.send_event(
-            topic=f'${channelAddress}', # 'f' injects topic variables
+            topic=f'${channelAddress}',
             message=user_data,
-            key=${pythonKey}
+            key=${pythonKey},
+            schema_str=${schemaConstName}
         )
         return f"Event successfully sent to ${channelAddress}."
     except Exception as e:
@@ -129,14 +151,17 @@ def ${operationId}(${funcParams}) -> str:
 
     return (
         <File name="mcp_server.py">
-            {`from typing import Optional
+            {`import os
+from typing import Optional
 from fastmcp import FastMCP
 from kafka_producer import MyProducer
 
 mcp = FastMCP("AsyncAPI-Kafka-Server")
 
+SCHEMA_REGISTRY_URL = os.getenv('SCHEMA_REGISTRY_URL', 'http://localhost:8081')
+
 try:
-    kafka_client = MyProducer(['${serverHost}'])
+    kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL)
     print("Kafka connection established")
 except Exception as e:
     print(f"Error: Couldn't connect to Kafka. {e}")
