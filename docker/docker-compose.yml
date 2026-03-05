@@ -5,32 +5,54 @@ services:
     image: apache/kafka:3.8.1
     container_name: kafka_broker
     ports:
-      - "9092:9092" # External access
+      - "9092:9092"  # PLAINTEXT — Schema Registry and internal tooling
+      - "9095:9095"  # SASL_SSL  — authenticated external clients
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      # FIX 1: Added INTERNAL listener on 9094 for container-to-container traffic
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,INTERNAL://kafka:9094
-      # FIX 2: Use service naqe for quorum instead of localhost
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,SASL_SSL://0.0.0.0:9095,CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,SASL_SSL://localhost:9095,INTERNAL://kafka:9094
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,SASL_SSL:SASL_SSL
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      # SASL
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
+      # SSL — filename-based convention: image reads passwords from credential files
+      KAFKA_SSL_KEYSTORE_FILENAME: kafka.keystore.p12
+      KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+      KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore.password
+      KAFKA_SSL_KEY_CREDENTIALS: keystore.password
+      KAFKA_SSL_CLIENT_AUTH: none
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      # FIX 3: Move logs to persistent path
       KAFKA_LOG_DIRS: /var/lib/kafka/data
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     volumes:
       - kafka_data:/var/lib/kafka/data
+      - ./certs:/etc/kafka/secrets:ro,z
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 9092 || exit 1"]
       interval: 10s
       timeout: 5s
       start_period: 30s
       retries: 5
+
+  kafka-init:
+    image: apache/kafka:3.8.1
+    container_name: kafka_init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: on-failure
+    environment:
+      KAFKA_USERNAME: ${KAFKA_USERNAME:-testuser}
+      KAFKA_PASSWORD: ${KAFKA_PASSWORD:-testpassword}
+    volumes:
+      - ./kafka-init.sh:/init.sh:ro,z
+    command: bash /init.sh
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.7.0
@@ -58,7 +80,6 @@ services:
       - "8080:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
-      # FIX 4: Point to the INTERNAL listener (kafka:9094) for container-to-container
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
       DYNAMIC_CONFIG_ENABLED: 'true'

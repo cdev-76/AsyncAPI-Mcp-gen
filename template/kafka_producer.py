@@ -7,7 +7,7 @@ from typing import Optional
 
 class MyProducer:
 
-    def __init__(self, bootstrap_servers: list, schema_registry_url: str):
+    def __init__(self, bootstrap_servers: list, schema_registry_url: str, security_config: dict = None):
         '''
         CONSTRUCTOR: Initializes the connection with the Kafka broker and Schema Registry.
 
@@ -15,8 +15,13 @@ class MyProducer:
         :type bootstrap_servers: list
         :param schema_registry_url: URL of the Confluent Schema Registry
         :type schema_registry_url: str
+        :param security_config: Optional dict of confluent-kafka security settings (e.g. SASL/SSL)
+        :type security_config: dict
         '''
-        self.producer = Producer({'bootstrap.servers': ','.join(bootstrap_servers)})
+        config = {'bootstrap.servers': ','.join(bootstrap_servers)}
+        if security_config:
+            config.update(security_config)
+        self.producer = Producer(config)
         self.registry_client = SchemaRegistryClient({'url': schema_registry_url})
         self._serializers = {}  # Cache serializers by schema string to avoid re-registering
         print("Connection established")
@@ -39,11 +44,22 @@ class MyProducer:
             self._serializers[schema_str] = JSONSerializer(schema_str, self.registry_client)
         serializer = self._serializers[schema_str]
 
+        message = {k: v for k, v in message.items() if v is not None}
         serialized_value = serializer(message, SerializationContext(topic, MessageField.VALUE))
         encoded_key = key.encode('utf-8') if key is not None else None
 
-        self.producer.produce(topic=topic, key=encoded_key, value=serialized_value)
+        delivery_error = []
+
+        def on_delivery(err, msg):
+            if err:
+                delivery_error.append(err)
+
+        self.producer.produce(topic=topic, key=encoded_key, value=serialized_value, on_delivery=on_delivery)
         self.producer.flush()
+
+        if delivery_error:
+            raise Exception(f"Delivery failed: {delivery_error[0]}")
+
         print(f"Event sent to topic: '{topic}' with key: '{key}'")
 
     def close(self):

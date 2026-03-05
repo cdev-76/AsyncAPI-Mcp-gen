@@ -9,7 +9,7 @@ info:
 defaultContentType: application/json
 servers:
   scram-connections:
-    host: 'localhost:9092'
+    host: 'localhost:9095'
     protocol: kafka-secure
     description: Test broker secured with scramSha256
     security:
