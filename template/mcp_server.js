@@ -2,8 +2,46 @@ import { File } from '@asyncapi/generator-react-sdk';
 
 export default function ({ asyncapi }) {
 
-    // Temporary static //
-    const serverHost = asyncapi.servers().all()[0].host();
+    // Read the first server
+    const server = asyncapi.servers().all()[0];
+    const serverHost = server.host();
+
+    // Read the server's security scheme type (null if none declared)
+    const secReqs = server.security();
+    const schemeType = (secReqs && secReqs.length > 0)
+        ? secReqs[0].all()[0].scheme().type()
+        : null;
+
+    // Build security env vars and Python security_config dict based on scheme type
+    const saslEnvVars = `KAFKA_USERNAME = os.getenv('KAFKA_USERNAME', '')
+KAFKA_PASSWORD = os.getenv('KAFKA_PASSWORD', '')
+KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
+
+    const saslMechanismMap = { plain: 'PLAIN', scramSha256: 'SCRAM-SHA-256', scramSha512: 'SCRAM-SHA-512' };
+
+    let securityEnvVars = '';
+    let securityConfigCode = 'security_config = None';
+
+    if (schemeType in saslMechanismMap) {
+        securityEnvVars = saslEnvVars;
+        securityConfigCode = `security_config = {
+    'security.protocol': 'SASL_SSL',
+    'sasl.mechanism': '${saslMechanismMap[schemeType]}',
+    'sasl.username': KAFKA_USERNAME,
+    'sasl.password': KAFKA_PASSWORD,
+    'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
+}`;
+    } else if (schemeType === 'X509') {
+        securityEnvVars = `KAFKA_SSL_CERTIFICATE_LOCATION = os.getenv('KAFKA_SSL_CERTIFICATE_LOCATION', '')
+KAFKA_SSL_KEY_LOCATION = os.getenv('KAFKA_SSL_KEY_LOCATION', '')
+KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
+        securityConfigCode = `security_config = {
+    'security.protocol': 'SSL',
+    'ssl.certificate.location': KAFKA_SSL_CERTIFICATE_LOCATION,
+    'ssl.key.location': KAFKA_SSL_KEY_LOCATION,
+    'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
+}`;
+    }
 
     // Builds a JSON Schema string from an AsyncAPI payload schema object
     const buildJsonSchema = (payloadSchema, title) => {
@@ -152,16 +190,21 @@ def ${operationId}(${funcParams}) -> str:
     return (
         <File name="mcp_server.py">
             {`import os
+from dotenv import load_dotenv
 from typing import Optional
 from fastmcp import FastMCP
 from kafka_producer import MyProducer
 
+load_dotenv()
+
 mcp = FastMCP("AsyncAPI-Kafka-Server")
 
 SCHEMA_REGISTRY_URL = os.getenv('SCHEMA_REGISTRY_URL', 'http://localhost:8081')
+${securityEnvVars ? '\n' + securityEnvVars : ''}
+${securityConfigCode}
 
 try:
-    kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL)
+    kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL, security_config)
     print("Kafka connection established")
 except Exception as e:
     print(f"Error: Couldn't connect to Kafka. {e}")
