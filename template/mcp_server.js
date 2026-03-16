@@ -68,7 +68,20 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
         return JSON.stringify(schema).replace(/'/g, "\\'");
     };
 
-    const mcpTools = asyncapi.operations().all().map(operation => {
+    const operations = asyncapi.operations().all();
+    // Build list of (topic, schema_const) for static schema registration at startup
+    const topicSchemasEntries = operations.map(operation => {
+        const operationId = operation.id();
+        const channelAddress = operation.channels().all()[0].address();
+        const schemaConstName = `SCHEMA_${operationId.toUpperCase()}`;
+        const topicStr = channelAddress.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `    ('${topicStr}', ${schemaConstName})`;
+    });
+    const topicSchemasList = topicSchemasEntries.length > 0
+        ? `[\n${topicSchemasEntries.join(',\n')}\n]`
+        : '[]';
+
+    const mcpTools = operations.map(operation => {
         // Extract topic and operation payload
         const operationId = operation.id(); // Example: lightTurnOn
         const channelAddress = operation.channels().all()[0].address(); // Example: 'smartylighting.streetlights.1.0.action.{streetlightId}.turn.on'
@@ -88,25 +101,11 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
         // Cleans brackets to get the variable's name
         const pathParams = pathParamsMatch.map(param => param.replace(/[{}]/g, ''));
 
-        // Combine path parameters and payload properties to search for a potential key
-        const potentialKeyFields = [...pathParams, ...propNames]; // Example: ['streetlightId','command','sentAt']
-
-        // Check for explicit x-kafka-key extension on the operation first
-        // Example in YAML: x-kafka-key: streetlightId
+        // Kafka partition key: x-kafka-key if set, else first path param (e.g. streetlightId)
         const explicitKey = operation.extensions().get('x-kafka-key')?.value();
+        const keyField = explicitKey || (pathParams.length > 0 ? pathParams[0] : null);
 
-        // Otherwise, auto-detect by checking if the parameter name matches or ends with our target words
-        // Example: 'streetlightId' will match because it ends with 'id' (lowercased)
-        const detectedKey = potentialKeyFields.find(prop => {
-            const lowerProp = prop.toLowerCase();
-            return ['id', 'username', 'userid', 'email', 'name'].some(
-                keyword => lowerProp === keyword || lowerProp.endsWith(keyword)
-            );
-        });
-
-        // Priority: explicit extension > auto-detected > None (Kafka round-robins across partitions)
-        const keyField = explicitKey || detectedKey;
-        const pythonKey = keyField ? `str(${keyField})` : 'None'; // Example: 'str(streetlightId)'
+        const pythonKey = keyField ? `str(${keyField})` : 'None';
 
         // 1. Build function params. Example: streetlightId: str, command: str, sentAt: str
         const getPythonType = (asyncApiType) => {
@@ -118,7 +117,7 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
                 'array': 'list',
                 'object': 'dict'
             };
-            return typeMap[asyncApiType] || 'str'; // If there is no type, we asume str
+            return typeMap[asyncApiType] || 'str'; // If there is no type, assume str
         };
 
         const payloadParams = propNames.map(propName => {
@@ -131,7 +130,7 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
             return isOptional ? `${propName}: Optional[${pyType}] = None` : `${propName}: ${pyType}`;
         }); // Example: ['command: str', 'sentAt: Optional[str] = None']
 
-        // Asume that URL params always enter as str
+        // Path params are always passed as str
         const pathParamDefs = pathParams.map(param => `${param}: str`); // Example: ['streetlightId: str']
         const funcParams = [...pathParamDefs, ...payloadParams].join(', '); // Example: 'streetlightId: str, command: str, sentAt: str'
 
@@ -175,11 +174,15 @@ def ${operationId}(${funcParams}) -> str:
     }
 
     try:
+        # Resolved topic for produce; template subject for schema lookup (avoids new schema per param value)
+        topic = f'${channelAddress}'
+        subject_topic = '${channelAddress.replace(/'/g, "\\'")}'
         kafka_client.send_event(
-            topic=f'${channelAddress}',
+            topic=topic,
             message=user_data,
             key=${pythonKey},
-            schema_str=${schemaConstName}
+            schema_str=${schemaConstName},
+            subject_topic=subject_topic
         )
         return f"Event successfully sent to ${channelAddress}."
     except Exception as e:
@@ -209,7 +212,16 @@ try:
 except Exception as e:
     print(f"Error: Couldn't connect to Kafka. {e}")
     kafka_client = None
+
 ${mcpTools}
+
+# Static schema registration: all schemas from AsyncAPI are registered at startup
+TOPIC_SCHEMAS = ${topicSchemasList}
+if kafka_client is not None:
+    try:
+        kafka_client.register_schemas(TOPIC_SCHEMAS)
+    except Exception as e:
+        print(f"Warning: Could not register schemas in Schema Registry: {e}")
 
 if __name__ == "__main__":
     mcp.run()

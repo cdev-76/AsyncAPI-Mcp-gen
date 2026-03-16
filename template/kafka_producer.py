@@ -1,8 +1,10 @@
+import json
 from confluent_kafka import Producer
-from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry import SchemaRegistryClient, Schema
 from confluent_kafka.schema_registry.json_schema import JSONSerializer
 from confluent_kafka.serialization import SerializationContext, MessageField
-from typing import Optional
+from typing import Optional, List, Tuple
+import jsonschema
 
 
 class MyProducer:
@@ -26,26 +28,53 @@ class MyProducer:
         self._serializers = {}  # Cache serializers by schema string to avoid re-registering
         print("Connection established")
 
-    def send_event(self, topic: str, message: dict, key: Optional[str], schema_str: str):
+    def register_schemas(self, topic_schemas: List[Tuple[str, str]]) -> None:
         '''
-        Validates the message against the schema, registers it with the Schema Registry
-        if needed, and sends it to the Kafka broker.
+        Registers all schemas in the Schema Registry at startup (static loading).
+        Subject for each topic is "{topic}-value", matching Confluent convention.
+        Call this once after __init__ so schemas exist before any produce; the
+        producer will then use the existing schema instead of registering on first send.
 
-        :param topic: Kafka topic where the message is sent
+        :param topic_schemas: List of (topic, schema_str) for each event type
+        :type topic_schemas: List[Tuple[str, str]]
+        '''
+        for topic, schema_str in topic_schemas:
+            subject = f"{topic}-value"
+            schema = Schema(schema_str=schema_str, schema_type="JSON")
+            self.registry_client.register_schema(subject_name=subject, schema=schema)
+            print(f"Schema registered for subject: {subject}")
+        print("All schemas registered in Schema Registry")
+
+    def send_event(self, topic: str, message: dict, key: Optional[str], schema_str: str,
+                   subject_topic: str):
+        '''
+        Validates the message against the schema and sends it to the Kafka broker.
+        Schemas must be registered beforehand via register_schemas() (static loading).
+        Schema Registry is used only with the static subject (subject_topic); no dynamic registration.
+
+        :param topic: Kafka topic where the message is sent (resolved, e.g. ...action.myhome.turn.on)
         :type topic: str
         :param message: Content of the message as a dict
         :type message: dict
         :param key: Key that identifies the message for partition routing
         :type key: Optional[str]
-        :param schema_str: JSON Schema string for validation and registration
+        :param schema_str: JSON Schema string for validation and serialization
         :type schema_str: str
+        :param subject_topic: Topic name used for Schema Registry subject lookup (template form, e.g.
+            ...action.{streetlightId}.turn.on). Required; ensures only pre-registered schemas are used.
+        :type subject_topic: str
         '''
+        schema_dict = json.loads(schema_str)
+        message_clean = {k: v for k, v in message.items() if v is not None}
+        jsonschema.validate(instance=message_clean, schema=schema_dict)
+
         if schema_str not in self._serializers:
             self._serializers[schema_str] = JSONSerializer(schema_str, self.registry_client)
         serializer = self._serializers[schema_str]
 
-        message = {k: v for k, v in message.items() if v is not None}
-        serialized_value = serializer(message, SerializationContext(topic, MessageField.VALUE))
+        serialized_value = serializer(
+            message_clean, SerializationContext(subject_topic, MessageField.VALUE)
+        )
         encoded_key = key.encode('utf-8') if key is not None else None
 
         delivery_error = []

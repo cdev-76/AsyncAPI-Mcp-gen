@@ -6,9 +6,12 @@
     "apiVersion": "v3",
     "renderer": "react",
     "parameters": {},
-    "supportedProtocols": ["kafka"]
+    "supportedProtocols": [
+      "kafka"
+    ]
   },
   "dependencies": {
+    "@asyncapi/generator": "^3.2.0",
     "@asyncapi/generator-react-sdk": "^1.0.0"
   }
 }
