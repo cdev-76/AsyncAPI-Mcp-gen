@@ -1,11 +1,12 @@
 """
 Run the streetlights log consumer. Subscribes to topics and logs each event (turnOn, turnOff, dim, etc.).
 
-Env (from repo root .env or consumer/.env):
+Toda la configuración se lee del fichero .env (primero consumer/.env, luego raíz del repo).
+Variables en .env:
   KAFKA_BOOTSTRAP_SERVERS  - default localhost:9095
-  TOPICS                   - comma-separated topic names
+  TOPICS                   - topics separados por comas (obligatorio)
   CONSUMER_GROUP_ID        - default streetlights-logger
-  Same security vars as MCP (KAFKA_USERNAME, KAFKA_PASSWORD, KAFKA_SSL_CA_LOCATION) if using SASL_SSL.
+  KAFKA_USERNAME, KAFKA_PASSWORD, KAFKA_SSL_CA_LOCATION - si usas SASL_SSL
 """
 import os
 from pathlib import Path
@@ -13,9 +14,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from kafka_consumer import MyConsumer
 
-# Load .env from repo root when running from consumer/
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-load_dotenv()
+# Cargar .env: primero en consumer/, luego en la raíz del repo
+_consumer_dir = Path(__file__).resolve().parent
+load_dotenv(_consumer_dir / ".env")
+load_dotenv(_consumer_dir.parent / ".env")
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9095")
 TOPICS_STR = os.getenv("TOPICS", "")
@@ -35,8 +37,8 @@ if KAFKA_USERNAME and KAFKA_PASSWORD:
     }
 
 if not TOPICS_STR.strip():
-    print("Set TOPICS (comma-separated), e.g.:")
-    print("  export TOPICS='smartylighting.streetlights.1.0.action.casaNico.turn.on,smartylighting.streetlights.1.0.action.casaNico.turn.off'")
+    print("Define TOPICS en el .env (topics separados por comas). Ejemplo:")
+    print("  TOPICS=smartylighting.streetlights.1.0.action.casaNico.turn.on,smartylighting.streetlights.1.0.action.casaNico.turn.off,smartylighting.streetlights.1.0.action.casaNico.dim-value")
     exit(1)
 
 topics = [t.strip() for t in TOPICS_STR.split(",") if t.strip()]
