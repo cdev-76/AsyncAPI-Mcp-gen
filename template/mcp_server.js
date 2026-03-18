@@ -1,9 +1,9 @@
 import { File } from '@asyncapi/generator-react-sdk';
 
-export default function ({ asyncapi }) {
+export default function ({ asyncapi, params }) {
 
-    // Read the first server
-    const server = asyncapi.servers().all()[0];
+    // Read the selected server
+    const server = asyncapi.allServers().get(params.server);
     const serverHost = server.host();
 
     // Read the server's security scheme type (null if none declared)

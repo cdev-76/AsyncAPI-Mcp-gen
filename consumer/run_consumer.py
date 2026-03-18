@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from kafka_consumer import MyConsumer
 
-# Cargar .env: primero en consumer/, luego en la raíz del repo
+# load .env
 _consumer_dir = Path(__file__).resolve().parent
 load_dotenv(_consumer_dir / ".env")
 load_dotenv(_consumer_dir.parent / ".env")
