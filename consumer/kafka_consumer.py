@@ -22,8 +22,8 @@ def _deserialize_confluent_json(value: bytes) -> Optional[dict]:
     if value[0] != MAGIC_BYTE:
         return None
     try:
-        payload = value[5:].decode("utf-8")
-        return json.loads(payload)
+        payload = value[5:].decode("utf-8") # Skips the magic byte, schema id and the JSON payload
+        return json.loads(payload) # Returns the JSON payload as a dict
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
 
@@ -42,38 +42,38 @@ class MyConsumer:
         security_config: Optional[dict] = None,
     ):
         config = {
-            "bootstrap.servers": ",".join(bootstrap_servers),
-            "group.id": group_id,
+            "bootstrap.servers": ",".join(bootstrap_servers), # Join the bootstrap servers with a comma
+            "group.id": group_id, # Group id
             "auto.offset.reset": "earliest",
         }
-        if security_config:
-            config.update(security_config)
-        self.consumer = Consumer(config)
-        self.topics = topics
-        self.consumer.subscribe(topics)
-        logger.info("Consumer subscribed to %s", topics)
+        if security_config: # If security config is provided, update the config with the security config
+            config.update(security_config) # Update the config with the security config
+        self.consumer = Consumer(config) # Create a consumer
+        self.topics = topics # List of topics to subscribe to
+        self.consumer.subscribe(topics) # Subscribe to the topics
+        logger.info("Consumer subscribed to %s", topics) # Log the topics
 
     def consume_loop(self) -> None:
-        """Poll and log each message until KeyboardInterrupt."""
+        """Poll and log each message until KeyboardInterrupt.""" # Poll and log each message until KeyboardInterrupt
         try:
             while True:
-                msg = self.consumer.poll(timeout=1.0)
-                if msg is None:
+                msg = self.consumer.poll(timeout=1.0) # Poll for a message every 1 second
+                if msg is None: # If no message is found, continue
                     continue
-                if msg.error():
+                if msg.error(): # If an error is found, log the error
                     if msg.error().code() == KafkaError._PARTITION_EOF:
-                        continue
+                        continue # If the error is a partition EOF, continue
                     logger.error("Consumer error: %s", msg.error())
                     continue
-                key = msg.key().decode("utf-8") if msg.key() else None
-                value = _deserialize_confluent_json(msg.value())
+                key = msg.key().decode("utf-8") if msg.key() else None # If a key is found, decode it
+                value = _deserialize_confluent_json(msg.value()) # Deserialize the value
                 logger.info(
                     "event topic=%s partition=%s offset=%s key=%s value=%s",
-                    msg.topic(),
-                    msg.partition(),
-                    msg.offset(),
+                    msg.topic(), # Topic name
+                    msg.partition(), # Partition number
+                    msg.offset(), # Offset number (position inside the partition)
                     key,
-                    value,
+                    value, # Value as a dict
                 )
         except KeyboardInterrupt:
             logger.info("Stopping consumer")
