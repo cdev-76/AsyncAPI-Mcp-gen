@@ -54,7 +54,11 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
         Object.keys(props).forEach(propName => {
             const prop = props[propName];
             const propDef = { type: prop.type() ? String(prop.type()) : 'string' };
-            if (prop.description()) propDef.description = String(prop.description());
+            if (prop.description())                           propDef.description = String(prop.description());
+            if (prop.format())                                propDef.format = String(prop.format());
+            if (prop.enum() && prop.enum().length > 0)        propDef.enum = prop.enum();
+            if (prop.minimum() !== null && prop.minimum() !== undefined) propDef.minimum = prop.minimum();
+            if (prop.maximum() !== null && prop.maximum() !== undefined) propDef.maximum = prop.maximum();
             schemaProperties[propName] = propDef;
         });
 
@@ -70,7 +74,7 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
         return JSON.stringify(schema).replace(/'/g, "\\'");
     };
 
-    const operations = asyncapi.operations().all();
+    const operations = asyncapi.operations().all().filter(op => op.action() === 'send');
     // Build list of (topic, schema_const) for static schema registration at startup
     const topicSchemasEntries = operations.map(operation => {
         const operationId = operation.id();
