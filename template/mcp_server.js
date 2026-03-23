@@ -43,6 +43,17 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
     'ssl.key.location': KAFKA_SSL_KEY_LOCATION,
     'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
 }`;
+    } else if (schemeType === 'oauth2') {
+        securityEnvVars = `OAUTH_TOKEN_URL = os.getenv('OAUTH_TOKEN_URL', '')
+OAUTH_CLIENT_ID = os.getenv('OAUTH_CLIENT_ID', '')
+OAUTH_CLIENT_SECRET = os.getenv('OAUTH_CLIENT_SECRET', '')
+KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
+        securityConfigCode = `security_config = {
+    'security.protocol': 'SASL_SSL',
+    'sasl.mechanism': 'OAUTHBEARER',
+    'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
+    'oauth_cb': fetch_oauth_token,
+}`;
     }
 
     // Builds a JSON Schema string from an AsyncAPI payload schema object
@@ -196,13 +207,17 @@ def ${operationId}(${funcParams}) -> str:
 `;
     }).join('\n'); // Join each generated function
 
+    const kafkaProducerImport = schemeType === 'oauth2'
+        ? 'from kafka_producer import MyProducer, fetch_oauth_token'
+        : 'from kafka_producer import MyProducer';
+
     return (
         <File name="mcp_server.py">
             {`import os
 from dotenv import load_dotenv
 from typing import Optional
 from fastmcp import FastMCP
-from kafka_producer import MyProducer
+${kafkaProducerImport}
 
 load_dotenv()
 

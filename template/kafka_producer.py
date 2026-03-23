@@ -1,10 +1,36 @@
 import json
+import os
+import time
+import requests
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient, Schema
 from confluent_kafka.schema_registry.json_schema import JSONSerializer
 from confluent_kafka.serialization import SerializationContext, MessageField
 from typing import Optional, List, Tuple
 import jsonschema
+
+
+def fetch_oauth_token(config_str: str):
+    '''
+    OAuth2 client_credentials token callback for confluent-kafka OAUTHBEARER.
+    Called automatically by the Kafka client when a token is needed or has expired.
+    Reads OAUTH_TOKEN_URL, OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET from environment.
+
+    :param config_str: Value of sasl.oauthbearer.config (unused, required by confluent-kafka callback signature)
+    :returns: Tuple of (access_token, expiry_unix_timestamp_seconds)
+    '''
+    resp = requests.post(
+        os.getenv('OAUTH_TOKEN_URL', ''),
+        data={
+            'grant_type': 'client_credentials',
+            'client_id': os.getenv('OAUTH_CLIENT_ID', ''),
+            'client_secret': os.getenv('OAUTH_CLIENT_SECRET', ''),
+        },
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data['access_token'], time.time() + float(data['expires_in'])
 
 
 class MyProducer:
