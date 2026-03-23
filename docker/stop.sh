@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Select the stack to launch:"
+echo "Select the stack to stop:"
 echo "  1) SCRAM / mTLS  (docker-compose.yml)"
 echo "  2) OAuth2        (docker-compose-oauth.yml)"
 read -rp "Option [1/2]: " option
@@ -18,6 +18,5 @@ case "$option" in
     ;;
 esac
 
-echo "Launching $COMPOSE_FILE..."
-docker compose -f "./$COMPOSE_FILE" down -v
-docker compose -f "./$COMPOSE_FILE" up -d
+echo "Stopping $COMPOSE_FILE..."
+docker compose -f "./$COMPOSE_FILE" down
