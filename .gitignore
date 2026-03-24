@@ -214,4 +214,7 @@ docker/certs
 
 generated-code
 
+# OAuth2 token cache (contains sensitive access/refresh tokens)
+.oauth_tokens.json
+
 .claude

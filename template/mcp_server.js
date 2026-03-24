@@ -14,6 +14,13 @@ export default function ({ asyncapi, params }) {
         ? secReqs[0].all()[0].scheme().type()
         : null;
 
+    // For oauth2: detect whether the flow is authorizationCode or clientCredentials
+    let oauthFlow = null;
+    if (schemeType === 'oauth2') {
+        const flows = secReqs[0].all()[0].scheme().flows();
+        oauthFlow = (flows.authorizationCode && flows.authorizationCode()) ? 'authorizationCode' : 'clientCredentials';
+    }
+
     // Build security env vars and Python security_config dict based on scheme type
     const saslEnvVars = `KAFKA_USERNAME = os.getenv('KAFKA_USERNAME', '')
 KAFKA_PASSWORD = os.getenv('KAFKA_PASSWORD', '')
@@ -44,16 +51,30 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
     'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
 }`;
     } else if (schemeType === 'oauth2') {
-        securityEnvVars = `OAUTH_TOKEN_URL = os.getenv('OAUTH_TOKEN_URL', '')
+        if (oauthFlow === 'authorizationCode') {
+            securityEnvVars = `OAUTH_AUTH_URL = os.getenv('OAUTH_AUTH_URL', '')
+OAUTH_TOKEN_URL = os.getenv('OAUTH_TOKEN_URL', '')
 OAUTH_CLIENT_ID = os.getenv('OAUTH_CLIENT_ID', '')
 OAUTH_CLIENT_SECRET = os.getenv('OAUTH_CLIENT_SECRET', '')
 KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
-        securityConfigCode = `security_config = {
+            securityConfigCode = `security_config = {
+    'security.protocol': 'SASL_SSL',
+    'sasl.mechanism': 'OAUTHBEARER',
+    'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
+    'oauth_cb': fetch_oauth_token_authcode,
+}`;
+        } else {
+            securityEnvVars = `OAUTH_TOKEN_URL = os.getenv('OAUTH_TOKEN_URL', '')
+OAUTH_CLIENT_ID = os.getenv('OAUTH_CLIENT_ID', '')
+OAUTH_CLIENT_SECRET = os.getenv('OAUTH_CLIENT_SECRET', '')
+KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
+            securityConfigCode = `security_config = {
     'security.protocol': 'SASL_SSL',
     'sasl.mechanism': 'OAUTHBEARER',
     'ssl.ca.location': KAFKA_SSL_CA_LOCATION,
     'oauth_cb': fetch_oauth_token,
 }`;
+        }
     }
 
     // Builds a JSON Schema string from an AsyncAPI payload schema object
@@ -207,9 +228,15 @@ def ${operationId}(${funcParams}) -> str:
 `;
     }).join('\n'); // Join each generated function
 
-    const kafkaProducerImport = schemeType === 'oauth2'
-        ? 'from kafka_producer import MyProducer, fetch_oauth_token'
-        : 'from kafka_producer import MyProducer';
+    const kafkaProducerImport = schemeType !== 'oauth2'
+        ? 'from kafka_producer import MyProducer'
+        : oauthFlow === 'authorizationCode'
+            ? 'from kafka_producer import MyProducer\nfrom oauth_flow import fetch_oauth_token_authcode, get_valid_tokens'
+            : 'from kafka_producer import MyProducer, fetch_oauth_token';
+
+    const startupAuthCheck = oauthFlow === 'authorizationCode'
+        ? '\n# Trigger OAuth2 browser login at startup so the token is ready before Kafka connects\nget_valid_tokens()\n'
+        : '';
 
     return (
         <File name="mcp_server.py">
@@ -226,7 +253,7 @@ mcp = FastMCP("AsyncAPI-Kafka-Server")
 SCHEMA_REGISTRY_URL = os.getenv('SCHEMA_REGISTRY_URL', 'http://localhost:8081')
 ${securityEnvVars ? '\n' + securityEnvVars : ''}
 ${securityConfigCode}
-
+${startupAuthCheck}
 try:
     kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL, security_config)
     print("Kafka connection established")

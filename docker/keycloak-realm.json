@@ -14,7 +14,9 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": true,
-      "authorizationServicesEnabled": false
+      "authorizationServicesEnabled": false,
+      "redirectUris": ["http://localhost:8888/callback"],
+      "webOrigins": ["http://localhost:8888"]
     }
   ]
 }

@@ -26,6 +26,12 @@ servers:
     description: Test broker secured with OAuth2 (Keycloak client_credentials)
     security:
       - $ref: '#/components/securitySchemes/keycloak'
+  authcode-connections:
+    host: 'localhost:9095'
+    protocol: kafka-secure
+    description: Test broker secured with OAuth2 (Keycloak authorization_code with browser login)
+    security:
+      - $ref: '#/components/securitySchemes/keycloakAuthCode'
 channels:
   lightingMeasured:
     address: 'smartylighting.streetlights.1.0.event.{streetlightId}.lighting.measured'
@@ -172,6 +178,14 @@ components:
       description: OAuth2 client_credentials via Keycloak
       flows:
         clientCredentials:
+          tokenUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/token'
+          availableScopes: {}
+    keycloakAuthCode:
+      type: oauth2
+      description: OAuth2 authorization_code via Keycloak (browser login with refresh token)
+      flows:
+        authorizationCode:
+          authorizationUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/auth'
           tokenUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/token'
           availableScopes: {}
   parameters:
