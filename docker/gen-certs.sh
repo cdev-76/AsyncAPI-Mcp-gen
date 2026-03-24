@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CERTS_DIR="$SCRIPT_DIR/certs"
-PASSWORD="changeit"
+PASSWORD="testpassword"
 VALIDITY=365
 
 mkdir -p "$CERTS_DIR"
