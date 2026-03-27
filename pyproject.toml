@@ -14,3 +14,8 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
 ]
+
+[tool.uv.workspace]
+members = [
+    "api",
+]
