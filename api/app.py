@@ -16,6 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+#Deserialización del JSON
 class GenerateRequest(BaseModel):
     yaml_content: str
     server: str
@@ -120,7 +121,7 @@ __pycache__/
 *$py.class
 .python-version
 """
-        # CORRECCIÓN: Indentado correctamente dentro del try
+        # Indentado correctamente dentro del try
         with open(os.path.join(output_dir, ".gitignore"), "w") as f:
             f.write(gitignore_content)
 
@@ -142,7 +143,6 @@ __pycache__/
         print(f"EXCEPTION: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# CORRECCIÓN: Añadidos guiones bajos dobles e indentación
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
