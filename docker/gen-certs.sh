@@ -64,3 +64,22 @@ echo "   CA cert (client) : ca.crt"
 echo ""
 echo "Before running the MCP server, export:"
 echo "   export KAFKA_SSL_CA_LOCATION=$CERTS_DIR/ca.crt"
+
+echo "→ Generating Nginx certificate via mkcert..."
+if ! command -v mkcert &>/dev/null; then
+    echo "ERROR: mkcert not found. Install it with: sudo dnf install mkcert"
+    exit 1
+fi
+
+# Install the local CA into the system/browser trust store (idempotent)
+mkcert -install
+
+mkcert \
+    -key-file  "$CERTS_DIR/nginx.key" \
+    -cert-file "$CERTS_DIR/nginx.crt" \
+    localhost 127.0.0.1
+
+echo ""
+echo "✅ Nginx certificate ready (browser-trusted via mkcert CA):"
+echo "   nginx.crt / nginx.key → mounted by the nginx_proxy container"
+echo "   Access Kafka UI at: https://localhost"

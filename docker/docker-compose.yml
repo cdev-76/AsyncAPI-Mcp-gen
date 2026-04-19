@@ -76,8 +76,7 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
-    ports:
-      - "8080:8080"
+    # Port 8080 is NOT exposed to the host — only reachable via the nginx reverse proxy
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
@@ -93,6 +92,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx_proxy
+    ports:
+      - "443:443"  # HTTPS — Kafka UI access
+      - "80:80"    # HTTP  — redirects to HTTPS
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,z
+      - ./certs/nginx.crt:/etc/nginx/certs/nginx.crt:ro,z
+      - ./certs/nginx.key:/etc/nginx/certs/nginx.key:ro,z
+    depends_on:
+      kafka-ui:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   kafka_data:
