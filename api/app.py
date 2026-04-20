@@ -1,11 +1,16 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from anthropic import Anthropic
+from dotenv import load_dotenv
 import subprocess
 import shutil
 import os
 import uuid
+import json
+
+load_dotenv()
 
 app = FastAPI(title="MCP Generator API")
 
@@ -21,7 +26,56 @@ class GenerateRequest(BaseModel):
     yaml_content: str
     server: str
 
+class ChatMessageIn(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    yaml_content: str
+    messages: list[ChatMessageIn]
+
+
+ASYNCAPI_SYSTEM_PROMPT = """Eres un experto en AsyncAPI 3.0. Ayudas a los usuarios a crear y modificar especificaciones YAML de AsyncAPI 3.0.
+
+Reglas:
+- Usa siempre el formato AsyncAPI 3.0.0 (no 2.x)
+- Cuando generes o modifiques YAML, devuelve la especificación COMPLETA dentro de un bloque ```yaml
+- En AsyncAPI 3.0 las operaciones referencian canales con $ref (no nombre directo)
+- Los canales y mensajes son entidades separadas de las operaciones
+- Sé conciso y enfocado en la petición del usuario
+
+Especificación YAML actual del usuario:
+
+{yaml_content}"""
+
+
+async def _stream_chat(yaml_content: str, messages: list[ChatMessageIn]):
+    client = Anthropic()
+    system = ASYNCAPI_SYSTEM_PROMPT.format(yaml_content=yaml_content)
+    anthropic_messages = [{"role": m.role, "content": m.content} for m in messages]
+
+    with client.messages.stream(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=system,
+        messages=anthropic_messages,
+    ) as stream:
+        for text in stream.text_stream:
+            yield f"data: {json.dumps({'text': text})}\n\n"
+
+    yield "data: [DONE]\n\n"
+
 ROOT_PATH = os.path.abspath("..")
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest):
+    return StreamingResponse(
+        _stream_chat(request.yaml_content, request.messages),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
 
 @app.post("/generate")
 async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
