@@ -44,6 +44,12 @@ Reglas:
 - Los canales y mensajes son entidades separadas de las operaciones
 - Sé conciso y enfocado en la petición del usuario
 
+Nomenclatura de topics Kafka:
+- Usa SOLO caracteres alfanuméricos, puntos (.), guiones (-) y guiones bajos (_)
+- NUNCA uses barras (/) ni espacios en nombres de topics ni en el campo address
+- Usa el punto como separador jerárquico: streetlights.turnon, usuarios.registrados
+- El campo address del canal debe seguir la misma regla
+
 Especificación YAML actual del usuario:
 
 {yaml_content}"""
