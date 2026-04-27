@@ -114,10 +114,6 @@ Three stacks are available:
 | SCRAM | `docker-compose.yml` | 9095 | Kafka (SASL_SSL + SCRAM-SHA-256) + Schema Registry (Basic Auth) + kafka-ui + nginx |
 | OAuth2 | `docker-compose-oauth.yml` | 9095 | Kafka (SASL_SSL + OAUTHBEARER) + Schema Registry (Basic Auth) + kafka-ui + Keycloak |
 
-![PLAINTEXT Stack](docs/diagrams/stack-plaintext.png)
-
-![SCRAM Stack](docs/diagrams/stack-scram.png)
-
 For the SCRAM and OAuth2 stacks, generate SSL certs first (only needed once):
 
 ```bash
