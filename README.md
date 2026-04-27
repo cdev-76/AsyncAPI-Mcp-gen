@@ -59,9 +59,7 @@ The security configuration (broker host, authentication scheme) is read from the
 │   └── app.py
 ├── scripts/
 │   ├── run_asyncapi_generator.sh  # Wrapper around asyncapi generate
-│   ├── run_mcp_inspector.sh       # Launches the MCP Inspector UI
-│   ├── create_topics.py           # Pre-creates Kafka topics
-│   └── test_validation.py        # Validates generated code against a running broker
+│   └── run_mcp_inspector.sh       # Launches the MCP Inspector UI
 ├── package.json                   # AsyncAPI generator template config
 └── pyproject.toml                 # Python dependencies (uv)
 ```
