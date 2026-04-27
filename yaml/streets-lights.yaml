@@ -8,6 +8,17 @@ info:
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
 defaultContentType: application/json
 servers:
+  plain-connections:
+    host: 'localhost:9092'
+    protocol: kafka
+    description: Local broker without authentication (PLAINTEXT)
+    tags:
+      - name: 'env:local'
+        description: Local development environment
+      - name: 'kind:local'
+        description: This server is a local server exposed by the application
+      - name: 'visibility:public'
+        description: This resource is public and available to all users
   scram-connections:
     host: 'localhost:9095'
     protocol: kafka-secure
