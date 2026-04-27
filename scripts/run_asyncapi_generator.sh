@@ -1,29 +1,28 @@
 #!/bin/bash
 
-# Comprobamos si el usuario ha introducido el parámetro YAML
 if [ -z "$1" ]; then
-    echo " Error: No has indicado el archivo YAML."
-    echo " Uso: ./run_asyncapi_generator.sh <fichero.yaml> [serverName]"
-    echo "Ejemplo: ./run_asyncapi_generator.sh streets-lights.yaml scram-connections"
+    echo "Error: no YAML file specified."
+    echo "Usage: ./run_asyncapi_generator.sh <spec.yaml> [serverName]"
+    echo "Example: ./run_asyncapi_generator.sh streets-lights.yaml scram-connections"
     exit 1
 fi
 
 YAML_FILE="$1"
 SERVER_NAME="$2"
 
-echo " Generando servidor MCP usando $YAML_FILE ..."
+echo "Generating MCP server from $YAML_FILE ..."
 
 if [ -n "$SERVER_NAME" ]; then
-    echo " Usando servidor AsyncAPI: $SERVER_NAME"
+    echo "Using AsyncAPI server: $SERVER_NAME"
     asyncapi generate fromTemplate "$YAML_FILE" ./ \
         -o ./generated-code \
         --force-write \
         --param server="$SERVER_NAME"
 else
-    echo " Sin server explícito: se usará el primer servidor del YAML"
+    echo "No server specified — using first server in the spec"
     asyncapi generate fromTemplate "$YAML_FILE" ./ \
         -o ./generated-code \
         --force-write
 fi
 
-echo " ¡Generación completada con éxito!"
+echo "Generation complete."

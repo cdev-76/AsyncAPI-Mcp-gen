@@ -1,12 +1,12 @@
 """
-Run the streetlights log consumer. Subscribes to topics and logs each event (turnOn, turnOff, dim, etc.).
+Run the streetlights log consumer. Subscribes to topics and logs each event.
 
-Toda la configuración se lee del fichero .env (primero consumer/.env, luego raíz del repo).
-Variables en .env:
+Configuration is read from .env (consumer/.env takes precedence over the repo root .env).
+Required variables:
   KAFKA_BOOTSTRAP_SERVERS  - default localhost:9095
-  TOPICS                   - topics separados por comas (obligatorio)
+  TOPICS                   - comma-separated list of topics (required)
   CONSUMER_GROUP_ID        - default streetlights-logger
-  KAFKA_USERNAME, KAFKA_PASSWORD, KAFKA_SSL_CA_LOCATION - si usas SASL_SSL
+  KAFKA_USERNAME, KAFKA_PASSWORD, KAFKA_SSL_CA_LOCATION - for SASL_SSL
 """
 import os
 from pathlib import Path
@@ -14,7 +14,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from kafka_consumer import MyConsumer
 
-# load .env
 _consumer_dir = Path(__file__).resolve().parent
 load_dotenv(_consumer_dir / ".env")
 load_dotenv(_consumer_dir.parent / ".env")
@@ -37,8 +36,8 @@ if KAFKA_USERNAME and KAFKA_PASSWORD:
     }
 
 if not TOPICS_STR.strip():
-    print("Define TOPICS en el .env (topics separados por comas). Ejemplo:")
-    print("  TOPICS=smartylighting.streetlights.1.0.action.casaNico.turn.on,smartylighting.streetlights.1.0.action.casaNico.turn.off,smartylighting.streetlights.1.0.action.casaNico.dim-value")
+    print("Set TOPICS in .env as a comma-separated list. Example:")
+    print("  TOPICS=smartylighting.streetlights.1.0.action.home.turn.on,smartylighting.streetlights.1.0.action.home.turn.off")
     exit(1)
 
 topics = [t.strip() for t in TOPICS_STR.split(",") if t.strip()]

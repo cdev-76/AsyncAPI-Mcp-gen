@@ -16,12 +16,12 @@ app = FastAPI(title="MCP Generator API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4321"], 
+    allow_origins=["http://localhost:4321"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-#Deserialización del JSON
+
 class GenerateRequest(BaseModel):
     yaml_content: str
     server: str
@@ -35,22 +35,22 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessageIn]
 
 
-ASYNCAPI_SYSTEM_PROMPT = """Eres un experto en AsyncAPI 3.0. Ayudas a los usuarios a crear y modificar especificaciones YAML de AsyncAPI 3.0.
+ASYNCAPI_SYSTEM_PROMPT = """You are an AsyncAPI 3.0 expert. You help users create and modify AsyncAPI 3.0 YAML specifications.
 
-Reglas:
-- Usa siempre el formato AsyncAPI 3.0.0 (no 2.x)
-- Cuando generes o modifiques YAML, devuelve la especificación COMPLETA dentro de un bloque ```yaml
-- En AsyncAPI 3.0 las operaciones referencian canales con $ref (no nombre directo)
-- Los canales y mensajes son entidades separadas de las operaciones
-- Sé conciso y enfocado en la petición del usuario
+Rules:
+- Always use AsyncAPI 3.0.0 format (not 2.x)
+- When generating or modifying YAML, return the COMPLETE specification inside a ```yaml block
+- In AsyncAPI 3.0, operations reference channels using $ref (not a direct name)
+- Channels and messages are separate entities from operations
+- Be concise and focused on the user's request
 
-Nomenclatura de topics Kafka:
-- Usa SOLO caracteres alfanuméricos, puntos (.), guiones (-) y guiones bajos (_)
-- NUNCA uses barras (/) ni espacios en nombres de topics ni en el campo address
-- Usa el punto como separador jerárquico: streetlights.turnon, usuarios.registrados
-- El campo address del canal debe seguir la misma regla
+Kafka topic naming:
+- Use ONLY alphanumeric characters, dots (.), hyphens (-) and underscores (_)
+- NEVER use slashes (/) or spaces in topic names or in the address field
+- Use dot as hierarchical separator: streetlights.turnon, users.registered
+- The channel address field must follow the same rule
 
-Especificación YAML actual del usuario:
+Current user YAML specification:
 
 {yaml_content}"""
 
@@ -88,20 +88,18 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
     job_id = str(uuid.uuid4())
     working_dir = f"/tmp/mcp_{job_id}"
     os.makedirs(working_dir, exist_ok=True)
-    
+
     yaml_file = os.path.join(working_dir, "spec.yaml")
     output_dir = os.path.join(working_dir, "generated")
     zip_base_name = f"/tmp/mcp_project_{job_id}"
     full_zip_path = zip_base_name + ".zip"
 
     try:
-        # Escritura de especificación YAML temporal
         with open(yaml_file, "w") as f:
             f.write(data.yaml_content)
 
-        # Configuración de entorno para CLI de AsyncAPI
         env = os.environ.copy()
-        env["NODE_ENV"] = "development" 
+        env["NODE_ENV"] = "development"
         env["SUPPRESS_NO_CONFIG_WARNING"] = "y"
 
         command = (
@@ -110,32 +108,30 @@ async def generate(data: GenerateRequest, background_tasks: BackgroundTasks):
             f"-p server={data.server} "
             f"--force-write"
         )
-        
-        print(f"Ejecutando comando: {command}")
+
+        print(f"Running: {command}")
 
         process = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            env=env
+            env=env,
         )
 
         if process.returncode != 0:
             error_msg = process.stderr if process.stderr else process.stdout
-            print(f"ERROR CLI: {error_msg}")
-            raise Exception(f"AsyncAPI CLI Error: {error_msg}")
+            raise Exception(f"AsyncAPI CLI error: {error_msg}")
 
         if not os.path.exists(output_dir):
-            raise Exception("El generador no creó la carpeta de salida.")
+            raise Exception("Generator did not create the output directory.")
 
-        # Generación de entorno de proyecto UV
         project_name = f"mcp-server-{data.server or 'generated'}"
 
         pyproject_content = f"""[project]
 name = "{project_name}"
 version = "0.1.0"
-description = "Servidor MCP generado automáticamente para {data.server}"
+description = "Auto-generated MCP server for {data.server}"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -152,20 +148,16 @@ managed = true
 
         readme_content = f"""# {project_name.upper()}
 
-Proyecto generado con AsyncAPI.
+MCP server generated from an AsyncAPI specification.
 
-## Requisitos
+## Requirements
 - [uv](https://docs.astral.sh/uv/)
 
-## Ejecución
+## Run
 ```bash
-# 1. Instalar dependencias
 uv sync
-
-# 2. Iniciar servidor
 uv run python mcp_server.py
 """
-        # CORRECCIÓN: Indentado correctamente dentro del try
         with open(os.path.join(output_dir, "README.md"), "w") as f:
             f.write(readme_content)
 
@@ -181,26 +173,21 @@ __pycache__/
 *$py.class
 .python-version
 """
-        # Indentado correctamente dentro del try
         with open(os.path.join(output_dir, ".gitignore"), "w") as f:
             f.write(gitignore_content)
 
-        # Compresión del directorio final
-        shutil.make_archive(zip_base_name, 'zip', output_dir)
-
-        # Limpieza de archivos temporales
+        shutil.make_archive(zip_base_name, "zip", output_dir)
         background_tasks.add_task(shutil.rmtree, working_dir)
 
         return FileResponse(
-            full_zip_path, 
-            media_type="application/zip", 
-            filename=f"mcp-server-{data.server or 'generated'}.zip"
+            full_zip_path,
+            media_type="application/zip",
+            filename=f"mcp-server-{data.server or 'generated'}.zip",
         )
 
     except Exception as e:
         if os.path.exists(working_dir):
             shutil.rmtree(working_dir)
-        print(f"EXCEPTION: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
