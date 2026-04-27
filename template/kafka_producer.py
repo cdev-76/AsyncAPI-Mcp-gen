@@ -35,7 +35,8 @@ def fetch_oauth_token(config_str: str):
 
 class MyProducer:
 
-    def __init__(self, bootstrap_servers: list, schema_registry_url: str, security_config: dict = None):
+    def __init__(self, bootstrap_servers: list, schema_registry_url: str,
+                 security_config: dict = None, schema_registry_config: dict = None):
         '''
         CONSTRUCTOR: Initializes the connection with the Kafka broker and Schema Registry.
 
@@ -45,12 +46,17 @@ class MyProducer:
         :type schema_registry_url: str
         :param security_config: Optional dict of confluent-kafka security settings (e.g. SASL/SSL)
         :type security_config: dict
+        :param schema_registry_config: Optional extra config for SchemaRegistryClient (e.g. basic.auth.user.info)
+        :type schema_registry_config: dict
         '''
         config = {'bootstrap.servers': ','.join(bootstrap_servers)}
         if security_config:
             config.update(security_config)
         self.producer = Producer(config)
-        self.registry_client = SchemaRegistryClient({'url': schema_registry_url})
+        sr_config = {'url': schema_registry_url}
+        if schema_registry_config:
+            sr_config.update(schema_registry_config)
+        self.registry_client = SchemaRegistryClient(sr_config)
         self._serializers = {}  # Cache serializers by schema string to avoid re-registering
         print("Connection established")
 

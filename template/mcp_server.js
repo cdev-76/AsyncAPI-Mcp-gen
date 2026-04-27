@@ -30,6 +30,16 @@ KAFKA_SSL_CA_LOCATION = os.getenv('KAFKA_SSL_CA_LOCATION', '')`;
 
     let securityEnvVars = '';
     let securityConfigCode = 'security_config = None';
+    let schemaRegistryEnvVars = '';
+    let schemaRegistryConfigCode = 'schema_registry_config = None';
+
+    if (schemeType !== null) {
+        schemaRegistryEnvVars = `SCHEMA_REGISTRY_USERNAME = os.getenv('SCHEMA_REGISTRY_USERNAME', '')
+SCHEMA_REGISTRY_PASSWORD = os.getenv('SCHEMA_REGISTRY_PASSWORD', '')`;
+        schemaRegistryConfigCode = `schema_registry_config = {
+    'basic.auth.user.info': f'{SCHEMA_REGISTRY_USERNAME}:{SCHEMA_REGISTRY_PASSWORD}',
+}`;
+    }
 
     if (schemeType in saslMechanismMap) {
         securityEnvVars = saslEnvVars;
@@ -252,10 +262,12 @@ mcp = FastMCP("AsyncAPI-Kafka-Server")
 
 SCHEMA_REGISTRY_URL = os.getenv('SCHEMA_REGISTRY_URL', 'http://localhost:8081')
 ${securityEnvVars ? '\n' + securityEnvVars : ''}
+${schemaRegistryEnvVars ? '\n' + schemaRegistryEnvVars : ''}
 ${securityConfigCode}
+${schemaRegistryConfigCode}
 ${startupAuthCheck}
 try:
-    kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL, security_config)
+    kafka_client = MyProducer(['${serverHost}'], SCHEMA_REGISTRY_URL, security_config, schema_registry_config)
     print("Kafka connection established")
 except Exception as e:
     print(f"Error: Couldn't connect to Kafka. {e}")

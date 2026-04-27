@@ -53,8 +53,7 @@ The security configuration (broker host, authentication scheme) is read from the
 │   ├── keycloak-realm.example.json  # Keycloak realm config template (copy to keycloak-realm.json)
 │   ├── gen-certs.sh               # Generates SSL certs for SASL_SSL listeners (run once)
 │   ├── kafka-init.sh              # Creates SCRAM users at broker startup
-│   ├── launch.sh                  # Interactive launcher — choose which stack to bring up
-│   └── stop.sh
+│   └── launch.sh                  # Interactive launcher — choose which stack to bring up
 ├── api/                           # FastAPI service that wraps the generator (REST interface)
 │   └── app.py
 ├── scripts/
@@ -116,10 +115,10 @@ Four stacks are available:
 
 | Stack | Compose file | Port | Services |
 |-------|-------------|------|----------|
-| PLAINTEXT | `docker-compose-plain.yml` | 9092 | Kafka + Schema Registry + kafka-ui |
-| SCRAM | `docker-compose.yml` | 9095 | Kafka (SASL_SSL + SCRAM-SHA-256) + Schema Registry + kafka-ui + nginx |
-| mTLS | `docker-compose-mtls.yml` | 9096 | Kafka (SSL + mutual TLS) + Schema Registry + kafka-ui |
-| OAuth2 | `docker-compose-oauth.yml` | 9095 | Kafka (SASL_SSL + OAUTHBEARER) + Schema Registry + kafka-ui + Keycloak |
+| PLAINTEXT | `docker-compose-plain.yml` | 9092 | Kafka + Schema Registry (open) + kafka-ui |
+| SCRAM | `docker-compose.yml` | 9095 | Kafka (SASL_SSL + SCRAM-SHA-256) + Schema Registry (Basic Auth) + kafka-ui + nginx |
+| mTLS | `docker-compose-mtls.yml` | 9096 | Kafka (SSL + mutual TLS) + Schema Registry (Basic Auth) + kafka-ui |
+| OAuth2 | `docker-compose-oauth.yml` | 9095 | Kafka (SASL_SSL + OAUTHBEARER) + Schema Registry (Basic Auth) + kafka-ui + Keycloak |
 
 For the SCRAM, mTLS and OAuth2 stacks, generate SSL certs first (only needed once):
 
@@ -168,6 +167,10 @@ OAUTH_CLIENT_SECRET=your-secret
 OAUTH_TOKEN_URL=http://localhost:9090/realms/masorange/protocol/openid-connect/token
 # authorization_code only:
 OAUTH_AUTH_URL=http://localhost:9090/realms/masorange/protocol/openid-connect/auth
+
+# Schema Registry Basic Auth (SCRAM, mTLS, OAuth2 stacks only — not needed for PLAINTEXT)
+SCHEMA_REGISTRY_USERNAME=admin
+SCHEMA_REGISTRY_PASSWORD=testpassword
 ```
 
 Run the server:
@@ -193,6 +196,24 @@ Security configuration is read from the spec's `servers[].security` field and em
 | `X509` | SSL | mTLS (client certificate + key + CA) |
 | `oauth2` / `clientCredentials` | SASL_SSL | OAUTHBEARER — token fetched M2M via client secret |
 | `oauth2` / `authorizationCode` | SASL_SSL | OAUTHBEARER — token fetched via browser login, silent refresh via refresh_token |
+
+### OAuth2 flows
+
+Both flows use OAUTHBEARER on the Kafka side — the difference is **who authenticates and how**.
+
+**`client_credentials` — machine-to-machine (M2M)**
+
+The application authenticates directly against Keycloak using a `client_id` + `client_secret`. No human interaction is required. The token is fetched automatically in the background whenever the Kafka client needs one (confluent-kafka calls the `oauth_cb` callback).
+
+Use this when the producer is an automated service or pipeline: there is no user, just an application identity.
+
+**`authorization_code` — user login via browser**
+
+A real user must log in through a Keycloak login page. At startup, the generated server opens a browser, the user authenticates, and Keycloak issues an `access_token` + `refresh_token`. The access token is sent to Kafka; the refresh token is used to renew it silently in the background (handled by `oauth_flow.py`).
+
+Use this when you need to know **which user** sent each event — for audit trails, per-user authorization, or compliance requirements.
+
+> In both cases the Kafka broker validates the JWT signature against Keycloak's JWKS endpoint and checks the `iss` and `aud` claims. The difference is entirely in how the token is obtained, not in how it is used.
 
 ---
 

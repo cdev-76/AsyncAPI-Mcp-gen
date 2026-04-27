@@ -55,11 +55,19 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9094
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_AUTHENTICATION_METHOD: BASIC
+      SCHEMA_REGISTRY_AUTHENTICATION_REALM: SchemaRegistry
+      SCHEMA_REGISTRY_AUTHENTICATION_ROLES: admin
+      SCHEMA_REGISTRY_OPTS: >-
+        -Djava.security.auth.login.config=/etc/schema-registry/schema-registry.jaas
+    volumes:
+      - ./schema-registry.jaas:/etc/schema-registry/schema-registry.jaas:ro,z
+      - ./schema-registry.passwords:/etc/schema-registry/passwords.properties:ro,z
     depends_on:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      test: ["CMD", "curl", "-f", "-u", "admin:testpassword", "http://localhost:8081/subjects"]
       interval: 10s
       timeout: 5s
       start_period: 30s
@@ -74,6 +82,8 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRYAUTH_USERNAME: admin
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRYAUTH_PASSWORD: testpassword
       DYNAMIC_CONFIG_ENABLED: 'true'
     depends_on:
       kafka:

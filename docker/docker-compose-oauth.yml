@@ -1,11 +1,11 @@
 version: '3.8'
 
-# Stack con soporte OAuth2 (OAUTHBEARER) + SCRAM-SHA-256 en el mismo listener SASL_SSL.
-# Keycloak se incluye en la misma red para que Kafka pueda alcanzar el endpoint JWKS.
+# OAuth2 stack: OAUTHBEARER + SCRAM-SHA-256 on the same SASL_SSL listener.
+# Keycloak is included in the same network so Kafka can reach the JWKS endpoint.
 #
-# El realm 'masorange' y el cliente 'mcp-app' se importan automáticamente al arrancar
-# desde keycloak-realm.json. No es necesaria ninguna configuración manual.
-# Para modificar el realm o el cliente, edita keycloak-realm.json y reinicia el stack.
+# The 'masorange' realm and 'mcp-app' client are imported automatically on startup
+# from keycloak-realm.json. No manual Keycloak configuration is needed.
+# To modify the realm or client, edit keycloak-realm.json and restart the stack.
 
 services:
 
@@ -17,8 +17,7 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      # KC_HOSTNAME_URL controla el valor del claim 'iss' en los JWT.
-      # Kafka usará este valor en EXPECTED_ISSUER → deben coincidir exactamente.
+      # Controls the 'iss' claim in JWTs. Must match EXPECTED_ISSUER on the Kafka broker.
       KC_HOSTNAME_URL: http://localhost:9090
       KC_HTTP_ENABLED: 'true'
       KC_HOSTNAME_STRICT_HTTPS: 'false'
@@ -36,8 +35,8 @@ services:
     image: apache/kafka:3.8.1
     container_name: kafka_broker_oauth
     ports:
-      - "9092:9092"  # PLAINTEXT — Schema Registry y tooling interno
-      - "9095:9095"  # SASL_SSL  — clientes externos (SCRAM y OAUTHBEARER)
+      - "9092:9092"  # PLAINTEXT — Schema Registry and internal tooling
+      - "9095:9095"  # SASL_SSL  — external clients (SCRAM and OAUTHBEARER)
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
@@ -48,22 +47,22 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,SASL_SSL:SASL_SSL
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
-      # SASL — ambos mecanismos activos en el listener SASL_SSL
+      # Both SASL mechanisms active on the SASL_SSL listener
       KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256,OAUTHBEARER
-      # SCRAM: JAAS global via KAFKA_OPTS (igual que en docker-compose.yml)
+      # SCRAM: global JAAS config via KAFKA_OPTS (same as docker-compose.yml)
       KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/secrets/kafka_server_jaas.conf"
 
-      # OAUTHBEARER: JAAS inline por listener (no interfiere con el JAAS global de SCRAM)
+      # OAUTHBEARER: inline JAAS per listener (does not interfere with the global SCRAM JAAS)
       KAFKA_LISTENER_NAME_SASL__SSL_OAUTHBEARER_SASL_JAAS_CONFIG: >-
         org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;
 
-      # Validador JWT en el broker: verifica los tokens contra el JWKS de Keycloak.
-      # Usa la URL interna de Docker (keycloak:8080), no la del host (localhost:9090).
+      # JWT validator on the broker: verifies tokens against the Keycloak JWKS endpoint.
+      # Uses the internal Docker URL (keycloak:8080), not the host URL (localhost:9090).
       KAFKA_LISTENER_NAME_SASL__SSL_OAUTHBEARER_SASL_SERVER_CALLBACK_HANDLER_CLASS: >-
         org.apache.kafka.common.security.oauthbearer.secured.OAuthBearerValidatorCallbackHandler
       KAFKA_LISTENER_NAME_SASL__SSL_OAUTHBEARER_SASL_OAUTHBEARER_JWKS_ENDPOINT_URL: >-
         http://keycloak:8080/realms/masorange/protocol/openid-connect/certs
-      # Debe coincidir exactamente con el claim 'iss' de los tokens emitidos por Keycloak
+      # Must match exactly the 'iss' claim in tokens issued by Keycloak
       KAFKA_LISTENER_NAME_SASL__SSL_OAUTHBEARER_SASL_OAUTHBEARER_EXPECTED_ISSUER: >-
         http://localhost:9090/realms/masorange
       KAFKA_LISTENER_NAME_SASL__SSL_OAUTHBEARER_SASL_OAUTHBEARER_EXPECTED_AUDIENCE: account
@@ -116,11 +115,19 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9094
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_AUTHENTICATION_METHOD: BASIC
+      SCHEMA_REGISTRY_AUTHENTICATION_REALM: SchemaRegistry
+      SCHEMA_REGISTRY_AUTHENTICATION_ROLES: admin
+      SCHEMA_REGISTRY_OPTS: >-
+        -Djava.security.auth.login.config=/etc/schema-registry/schema-registry.jaas
+    volumes:
+      - ./schema-registry.jaas:/etc/schema-registry/schema-registry.jaas:ro
+      - ./schema-registry.passwords:/etc/schema-registry/passwords.properties:ro
     depends_on:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      test: ["CMD", "curl", "-f", "-u", "admin:testpassword", "http://localhost:8081/subjects"]
       interval: 10s
       timeout: 5s
       start_period: 30s
@@ -135,6 +142,8 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9094
       KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRYAUTH_USERNAME: admin
+      KAFKA_CLUSTERS_0_SCHEMAREGISTRYAUTH_PASSWORD: testpassword
       DYNAMIC_CONFIG_ENABLED: 'true'
     depends_on:
       kafka:
