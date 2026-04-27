@@ -16,11 +16,14 @@ AsyncAPI Generator + template/
         │
         ▼
 generated-code/
-  ├── mcp_server.py   ← FastMCP server with one @mcp.tool per operation
-  └── kafka_producer.py  ← Confluent Kafka producer with Schema Registry
+  ├── mcp_server.py     ← FastMCP server with one @mcp.tool per send operation
+  ├── kafka_producer.py ← Confluent Kafka producer with Schema Registry
+  └── oauth_flow.py     ← OAuth2 browser flow handler (only for authorization_code specs)
 ```
 
 For each `send` operation defined in the spec, the generator creates a typed Python function decorated with `@mcp.tool`. The function validates and serializes the payload against a JSON Schema extracted from the spec, then produces the message to the corresponding Kafka topic.
+
+The security configuration (broker host, authentication scheme) is read from the `servers[]` section of the spec and embedded directly into the generated code.
 
 ---
 
@@ -29,27 +32,38 @@ For each `send` operation defined in the spec, the generator creates a typed Pyt
 ```
 .
 ├── template/
-│   ├── mcp_server.js       # Dynamic template (AsyncAPI React SDK) — generates mcp_server.py
-│   └── kafka_producer.py   # Static file — copied as-is to generated-code/
-├── yaml/                   # AsyncAPI v3 spec examples
-│   ├── streets-lights.yaml
-│   ├── temperature.yaml
-│   └── ...
-├── generated-code/         # Output of the generator (gitignored, regenerate as needed)
+│   ├── mcp_server.js              # Dynamic template (AsyncAPI React SDK) → generates mcp_server.py
+│   ├── kafka_producer.py          # Static file — copied as-is to generated-code/
+│   └── oauth_flow.py              # Static file — copied for OAuth2 authorization_code specs
+├── yaml/                          # AsyncAPI v3 spec examples
+│   ├── streets-lights.yaml        # PLAINTEXT + SCRAM-SHA-256 + mTLS servers
+│   ├── streets-lights-oauth.yaml  # SCRAM + mTLS + OAuth2 (client_credentials + authorization_code)
+│   └── temperature.yaml           # IoT temperature sensors, PLAINTEXT
+├── generated-code/                # Output of the generator (gitignored — regenerate as needed)
 │   ├── mcp_server.py
-│   └── kafka_producer.py
-├── consumer/               # Standalone Kafka consumer (for testing / observability)
+│   ├── kafka_producer.py
+│   └── oauth_flow.py
+├── consumer/                      # Standalone Kafka consumer for testing/observability
 │   ├── kafka_consumer.py
 │   └── run_consumer.py
-├── docker/                 # Local dev environment
-│   ├── docker-compose.yml  # Kafka (SASL_SSL + PLAINTEXT) + Schema Registry + kafka-ui
-│   ├── gen-certs.sh        # Generates SSL certs for SASL_SSL listener
-│   ├── kafka-init.sh       # Creates SCRAM users at broker startup
-│   └── launch.sh
+├── docker/                        # Local dev environment
+│   ├── docker-compose.yml         # Kafka SASL_SSL (SCRAM) + PLAINTEXT + Schema Registry + nginx
+│   ├── docker-compose-plain.yml   # Kafka PLAINTEXT only — for quick local testing
+│   ├── docker-compose-oauth.yml   # Kafka SASL_SSL (SCRAM + OAUTHBEARER) + Keycloak
+│   ├── keycloak-realm.example.json  # Keycloak realm config template (copy to keycloak-realm.json)
+│   ├── gen-certs.sh               # Generates SSL certs for SASL_SSL listeners (run once)
+│   ├── kafka-init.sh              # Creates SCRAM users at broker startup
+│   ├── launch.sh                  # Interactive launcher — choose which stack to bring up
+│   └── stop.sh
+├── api/                           # FastAPI service that wraps the generator (REST interface)
+│   └── app.py
 ├── scripts/
-│   └── create_topics.py    # Helper to pre-create Kafka topics
-├── package.json            # AsyncAPI generator template config
-└── pyproject.toml          # Python dependencies (uv)
+│   ├── run_asyncapi_generator.sh  # Wrapper around asyncapi generate
+│   ├── run_mcp_inspector.sh       # Launches the MCP Inspector UI
+│   ├── create_topics.py           # Pre-creates Kafka topics
+│   └── test_validation.py        # Validates generated code against a running broker
+├── package.json                   # AsyncAPI generator template config
+└── pyproject.toml                 # Python dependencies (uv)
 ```
 
 ---
@@ -71,81 +85,113 @@ uv sync
 
 ## Generating the MCP server
 
-```bash
-npx asyncapi generate fromTemplate <spec.yaml> . --output generated-code/
-```
-
-If the spec defines multiple servers, select one with the `server` parameter:
+Use the provided script, passing the spec file and optionally the server name:
 
 ```bash
-npx asyncapi generate fromTemplate yaml/streets-lights.yaml . \
-  --output generated-code/ \
-  --param server=scram-connections
+./scripts/run_asyncapi_generator.sh yaml/streets-lights.yaml plain-connections
 ```
 
-The `server` parameter controls which broker host and security scheme are embedded in the generated code.
+The `server` parameter selects which broker host and security scheme are embedded in the generated code. If omitted, the first server in the spec is used.
+
+Available servers per spec:
+
+| Spec | Server name | Security |
+|------|-------------|----------|
+| `streets-lights.yaml` | `plain-connections` | None (PLAINTEXT) |
+| `streets-lights.yaml` | `scram-connections` | SCRAM-SHA-256 |
+| `streets-lights.yaml` | `mtls-connections` | mTLS (X509) |
+| `streets-lights-oauth.yaml` | `oauth-connections` | OAuth2 client_credentials |
+| `streets-lights-oauth.yaml` | `authcode-connections` | OAuth2 authorization_code |
 
 ---
 
 ## Local development environment
 
-The `docker/` directory provides a ready-to-use Kafka stack:
-
-| Service | Port | Description |
-|---------|------|-------------|
-| Kafka (PLAINTEXT) | 9092 | For Schema Registry and internal use |
-| Kafka (SASL_SSL) | 9095 | Authenticated external clients |
-| Confluent Schema Registry | 8081 | JSON Schema validation and serialization |
-| kafka-ui | 8080 | Web UI for topic/message inspection |
-
-**Start the stack:**
+Launch the stack interactively:
 
 ```bash
 cd docker/
-bash gen-certs.sh   # only needed once — generates SSL certs
-docker compose up -d
+bash launch.sh
 ```
+
+Three stacks are available:
+
+| Stack | Compose file | Services |
+|-------|-------------|----------|
+| PLAINTEXT | `docker-compose-plain.yml` | Kafka + Schema Registry + kafka-ui |
+| SCRAM/SSL | `docker-compose.yml` | Kafka (PLAINTEXT + SASL_SSL) + Schema Registry + kafka-ui + nginx |
+| OAuth2 | `docker-compose-oauth.yml` | Kafka (PLAINTEXT + SASL_SSL + OAUTHBEARER) + Schema Registry + kafka-ui + Keycloak |
+
+For the SCRAM/SSL and OAuth2 stacks, generate SSL certs first (only needed once):
+
+```bash
+cd docker/
+bash gen-certs.sh
+```
+
+### OAuth2 / Keycloak setup
+
+The OAuth2 stack requires a `docker/keycloak-realm.json` file (gitignored). Copy the example and set your client secret:
+
+```bash
+cp docker/keycloak-realm.example.json docker/keycloak-realm.json
+# Edit keycloak-realm.json and replace "CHANGE_ME" with a real secret
+```
+
+The realm (`masorange`) and client (`mcp-app`) are imported automatically on first startup. No manual Keycloak configuration is needed.
 
 ---
 
 ## Running the generated MCP server
 
-1. Copy `.env.example` to `generated-code/.env` (or set variables in your environment):
+Configure `generated-code/.env` with the appropriate variables for your security scheme:
 
 ```env
 SCHEMA_REGISTRY_URL=http://localhost:8081
 
-# For SASL_SSL (scramSha256 / scramSha512 / plain)
+# PLAINTEXT — no extra config needed
+
+# SCRAM-SHA-256
 KAFKA_USERNAME=testuser
 KAFKA_PASSWORD=testpassword
-KAFKA_SSL_CA_LOCATION=docker/certs/ca.crt
+KAFKA_SSL_CA_LOCATION=../docker/certs/ca.crt
 
-# For mTLS (X509)
+# mTLS (X509)
 # KAFKA_SSL_CERTIFICATE_LOCATION=...
 # KAFKA_SSL_KEY_LOCATION=...
 # KAFKA_SSL_CA_LOCATION=...
+
+# OAuth2
+OAUTH_CLIENT_ID=mcp-app
+OAUTH_CLIENT_SECRET=your-secret
+OAUTH_TOKEN_URL=http://localhost:9090/realms/masorange/protocol/openid-connect/token
+# authorization_code only:
+OAUTH_AUTH_URL=http://localhost:9090/realms/masorange/protocol/openid-connect/auth
 ```
 
-2. Run the server from `generated-code/`:
+Run the server:
 
 ```bash
 cd generated-code/
-uv run mcp_server.py
+uv run fastmcp dev mcp_server.py   # development mode (MCP Inspector)
+uv run mcp_server.py               # production mode
 ```
 
 ---
 
 ## Security support
 
-Security configuration is read automatically from the spec's `servers[].security` field.
+Security configuration is read from the spec's `servers[].security` field and embedded in the generated `mcp_server.py`.
 
-| AsyncAPI scheme | Kafka protocol | Generated config |
-|-----------------|---------------|-----------------|
-| `plain` | SASL_SSL | PLAIN mechanism |
-| `scramSha256` | SASL_SSL | SCRAM-SHA-256 |
-| `scramSha512` | SASL_SSL | SCRAM-SHA-512 |
-| `X509` | SSL | mTLS (cert + key + CA) |
-| _(none)_ | PLAINTEXT | No auth |
+| AsyncAPI scheme | Kafka protocol | Authentication |
+|-----------------|---------------|----------------|
+| _(none)_ | PLAINTEXT | None |
+| `scramSha256` | SASL_SSL | SCRAM-SHA-256 (username + password) |
+| `scramSha512` | SASL_SSL | SCRAM-SHA-512 (username + password) |
+| `plain` | SASL_SSL | PLAIN mechanism (username + password) |
+| `X509` | SSL | mTLS (client certificate + key + CA) |
+| `oauth2` / `clientCredentials` | SASL_SSL | OAUTHBEARER — token fetched M2M via client secret |
+| `oauth2` / `authorizationCode` | SASL_SSL | OAUTHBEARER — token fetched via browser login, silent refresh via refresh_token |
 
 ---
 
@@ -184,7 +230,7 @@ A simple consumer is provided for testing. Configure it via `consumer/.env`:
 
 ```env
 KAFKA_BOOTSTRAP_SERVERS=localhost:9095
-TOPICS=smartylighting.streetlights.1.0.action.home.turn.on,smartylighting.streetlights.1.0.action.home.turn.off
+TOPICS=smartylighting.streetlights.1.0.action.home.turn.on
 CONSUMER_GROUP_ID=streetlights-logger
 KAFKA_USERNAME=testuser
 KAFKA_PASSWORD=testpassword
@@ -200,9 +246,8 @@ uv run run_consumer.py
 
 ## Example specs
 
-| File | Description |
-|------|-------------|
-| `yaml/streets-lights.yaml` | Streetlights API with SCRAM-SHA-256 and mTLS servers, path params |
-| `yaml/temperature.yaml` | IoT temperature sensors, no auth, required fields |
-| `yaml/test-system.yaml` | Generic test spec |
-| `yaml/test-system-more-tools.yaml` | Multi-tool test spec |
+| File | Servers | Description |
+|------|---------|-------------|
+| `yaml/streets-lights.yaml` | `plain-connections`, `scram-connections`, `mtls-connections` | Streetlights API — path params, multiple security schemes |
+| `yaml/streets-lights-oauth.yaml` | `oauth-connections`, `authcode-connections` | Streetlights API — OAuth2 client_credentials and authorization_code |
+| `yaml/temperature.yaml` | _(plain)_ | IoT temperature sensors — required fields, no auth |
