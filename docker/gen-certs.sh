@@ -1,6 +1,6 @@
 #!/bin/bash
-# Generates a self-signed CA and a broker certificate for local SASL_SSL testing.
-# Only requires openssl. Output goes to docker/certs/.
+# Generates a self-signed CA, a broker certificate, a client certificate, and an nginx cert.
+# Only requires openssl and mkcert. Output goes to docker/certs/.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +16,8 @@ openssl req -new -x509 \
     -out    "$CERTS_DIR/ca.crt" \
     -days $VALIDITY -nodes \
     -subj "/CN=LocalKafkaCA/OU=Dev/O=Test/C=ES"
+
+# ── Broker certificate ────────────────────────────────────────────────────────
 
 echo "→ Generating broker private key and CSR..."
 openssl req -new \
@@ -42,13 +44,35 @@ openssl pkcs12 -export \
     -out  "$CERTS_DIR/kafka.keystore.p12" \
     -passout pass:$PASSWORD
 
-echo "→ Packaging CA cert into PKCS12 truststore..."
-openssl pkcs12 -export \
-    -nokeys \
-    -in   "$CERTS_DIR/ca.crt" \
-    -name ca \
-    -out  "$CERTS_DIR/kafka.truststore.p12" \
-    -passout pass:$PASSWORD
+echo "→ Packaging CA cert into PKCS12 truststore (via keytool for JVM compatibility)..."
+rm -f "$CERTS_DIR/kafka.truststore.p12"
+keytool -import -trustcacerts \
+    -alias ca \
+    -file "$CERTS_DIR/ca.crt" \
+    -keystore "$CERTS_DIR/kafka.truststore.p12" \
+    -storetype PKCS12 \
+    -storepass "$PASSWORD" \
+    -noprompt
+
+# ── Client certificate (for mTLS) ─────────────────────────────────────────────
+
+echo "→ Generating client private key and CSR..."
+openssl req -new \
+    -keyout "$CERTS_DIR/client.key" \
+    -out    "$CERTS_DIR/client.csr" \
+    -nodes \
+    -subj "/CN=mcp-client/OU=Dev/O=Test/C=ES"
+
+echo "→ Signing client certificate with CA..."
+openssl x509 -req \
+    -in    "$CERTS_DIR/client.csr" \
+    -CA    "$CERTS_DIR/ca.crt" \
+    -CAkey "$CERTS_DIR/ca.key" \
+    -CAcreateserial \
+    -out   "$CERTS_DIR/client.crt" \
+    -days $VALIDITY
+
+# ── Credentials file ──────────────────────────────────────────────────────────
 
 echo "→ Writing password credential file..."
 echo -n "$PASSWORD" > "$CERTS_DIR/keystore.password"
@@ -59,11 +83,12 @@ cp "$(dirname "$0")/kafka_server_jaas.conf" "$CERTS_DIR/kafka_server_jaas.conf"
 echo ""
 echo "✅ Certificates ready in $CERTS_DIR/"
 echo "   Broker keystore  : kafka.keystore.p12   (password: $PASSWORD)"
-echo "   Broker truststore: kafka.truststore.p12 (password: $PASSWORD)"
-echo "   CA cert (client) : ca.crt"
+echo "   Broker truststore: kafka.truststore.p12  (password: $PASSWORD)"
+echo "   CA cert          : ca.crt"
+echo "   Client cert      : client.crt + client.key  (for mTLS)"
 echo ""
-echo "Before running the MCP server, export:"
-echo "   export KAFKA_SSL_CA_LOCATION=$CERTS_DIR/ca.crt"
+
+# ── Nginx certificate ─────────────────────────────────────────────────────────
 
 echo "→ Generating Nginx certificate via mkcert..."
 if ! command -v mkcert &>/dev/null; then
@@ -71,7 +96,6 @@ if ! command -v mkcert &>/dev/null; then
     exit 1
 fi
 
-# Install the local CA into the system/browser trust store (idempotent)
 mkcert -install
 
 mkcert \

@@ -35,9 +35,9 @@ servers:
       - name: 'visibility:private'
         description: This resource is private and only available to certain users
   mtls-connections:
-    host: 'test.mykafkacluster.org:28092'
+    host: 'localhost:9096'
     protocol: kafka-secure
-    description: Test broker secured with X509
+    description: Local broker secured with mutual TLS (X509 client certificate)
     security:
       - $ref: '#/components/securitySchemes/certs'
     tags:
