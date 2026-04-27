@@ -8,30 +8,12 @@ info:
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
 defaultContentType: application/json
 servers:
-  scram-connections:
-    host: 'localhost:9095'
-    protocol: kafka-secure
-    description: Test broker secured with scramSha256
-    security:
-      - $ref: '#/components/securitySchemes/saslScram'
-  mtls-connections:
-    host: 'test.mykafkacluster.org:28092'
-    protocol: kafka-secure
-    description: Test broker secured with X509
-    security:
-      - $ref: '#/components/securitySchemes/certs'
   oauth-connections:
     host: 'localhost:9095'
     protocol: kafka-secure
     description: Test broker secured with OAuth2 (Keycloak client_credentials)
     security:
       - $ref: '#/components/securitySchemes/keycloak'
-  authcode-connections:
-    host: 'localhost:9095'
-    protocol: kafka-secure
-    description: Test broker secured with OAuth2 (Keycloak authorization_code with browser login)
-    security:
-      - $ref: '#/components/securitySchemes/keycloakAuthCode'
 channels:
   lightingMeasured:
     address: 'smartylighting.streetlights.1.0.event.{streetlightId}.lighting.measured'
@@ -167,25 +149,11 @@ components:
       format: date-time
       description: Date and time when the message was sent.
   securitySchemes:
-    saslScram:
-      type: scramSha256
-      description: Provide your username and password for SASL/SCRAM authentication
-    certs:
-      type: X509
-      description: Download the certificate files from service provider
     keycloak:
       type: oauth2
       description: OAuth2 client_credentials via Keycloak
       flows:
         clientCredentials:
-          tokenUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/token'
-          availableScopes: {}
-    keycloakAuthCode:
-      type: oauth2
-      description: OAuth2 authorization_code via Keycloak (browser login with refresh token)
-      flows:
-        authorizationCode:
-          authorizationUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/auth'
           tokenUrl: 'http://localhost:9090/realms/masorange/protocol/openid-connect/token'
           availableScopes: {}
   parameters:

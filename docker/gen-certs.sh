@@ -54,24 +54,6 @@ keytool -import -trustcacerts \
     -storepass "$PASSWORD" \
     -noprompt
 
-# ── Client certificate (for mTLS) ─────────────────────────────────────────────
-
-echo "→ Generating client private key and CSR..."
-openssl req -new \
-    -keyout "$CERTS_DIR/client.key" \
-    -out    "$CERTS_DIR/client.csr" \
-    -nodes \
-    -subj "/CN=mcp-client/OU=Dev/O=Test/C=ES"
-
-echo "→ Signing client certificate with CA..."
-openssl x509 -req \
-    -in    "$CERTS_DIR/client.csr" \
-    -CA    "$CERTS_DIR/ca.crt" \
-    -CAkey "$CERTS_DIR/ca.key" \
-    -CAcreateserial \
-    -out   "$CERTS_DIR/client.crt" \
-    -days $VALIDITY
-
 # ── Credentials file ──────────────────────────────────────────────────────────
 
 echo "→ Writing password credential file..."
@@ -85,7 +67,6 @@ echo "✅ Certificates ready in $CERTS_DIR/"
 echo "   Broker keystore  : kafka.keystore.p12   (password: $PASSWORD)"
 echo "   Broker truststore: kafka.truststore.p12  (password: $PASSWORD)"
 echo "   CA cert          : ca.crt"
-echo "   Client cert      : client.crt + client.key  (for mTLS)"
 echo ""
 
 # ── Nginx certificate ─────────────────────────────────────────────────────────

@@ -34,19 +34,6 @@ servers:
         description: This server is a remote server. Not exposed by the application
       - name: 'visibility:private'
         description: This resource is private and only available to certain users
-  mtls-connections:
-    host: 'localhost:9096'
-    protocol: kafka-secure
-    description: Local broker secured with mutual TLS (X509 client certificate)
-    security:
-      - $ref: '#/components/securitySchemes/certs'
-    tags:
-      - name: 'env:test-mtls'
-        description: This environment is meant for running internal tests through mtls
-      - name: 'kind:remote'
-        description: This server is a remote server. Not exposed by the application
-      - name: 'visibility:private'
-        description: This resource is private and only available to certain users
 channels:
   lightingMeasured:
     address: 'smartylighting.streetlights.1.0.event.{streetlightId}.lighting.measured'
@@ -185,9 +172,6 @@ components:
     saslScram:
       type: scramSha256
       description: Provide your username and password for SASL/SCRAM authentication
-    certs:
-      type: X509
-      description: Download the certificate files from service provider
   parameters:
     streetlightId:
       description: The ID of the streetlight.

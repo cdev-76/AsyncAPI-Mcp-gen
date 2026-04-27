@@ -17,8 +17,7 @@ AsyncAPI Generator + template/
         ▼
 generated-code/
   ├── mcp_server.py     ← FastMCP server with one @mcp.tool per send operation
-  ├── kafka_producer.py ← Confluent Kafka producer with Schema Registry
-  └── oauth_flow.py     ← OAuth2 token handler (client_credentials flow)
+  └── kafka_producer.py ← Confluent Kafka producer with Schema Registry
 ```
 
 For each `send` operation defined in the spec, the generator creates a typed Python function decorated with `@mcp.tool`. The function validates and serializes the payload against a JSON Schema extracted from the spec, then produces the message to the corresponding Kafka topic.
@@ -33,16 +32,14 @@ The security configuration (broker host, authentication scheme) is read from the
 .
 ├── template/
 │   ├── mcp_server.js              # Dynamic template (AsyncAPI React SDK) → generates mcp_server.py
-│   ├── kafka_producer.py          # Static file — copied as-is to generated-code/
-│   └── oauth_flow.py              # Static file — copied for OAuth2 client_credentials specs
+│   └── kafka_producer.py          # Static file — copied as-is to generated-code/
 ├── yaml/                          # AsyncAPI v3 spec examples
 │   ├── streets-lights.yaml        # PLAINTEXT + SCRAM-SHA-256 servers
 │   ├── streets-lights-oauth.yaml  # OAuth2 client_credentials server
 │   └── temperature.yaml           # IoT temperature sensors, PLAINTEXT
 ├── generated-code/                # Output of the generator (gitignored — regenerate as needed)
 │   ├── mcp_server.py
-│   ├── kafka_producer.py
-│   └── oauth_flow.py
+│   └── kafka_producer.py
 ├── consumer/                      # Standalone Kafka consumer for testing/observability
 │   ├── kafka_consumer.py
 │   └── run_consumer.py
@@ -175,6 +172,82 @@ uv run mcp_server.py               # production mode
 
 ---
 
+## Quick start by security scheme
+
+### PLAINTEXT
+
+No certificates or credentials needed.
+
+```bash
+# 1. Start the stack
+cd docker && bash launch.sh   # option 1
+
+# 2. Generate the MCP server
+./scripts/run_asyncapi_generator.sh yaml/streets-lights.yaml plain-connections
+
+# 3. Run
+cd generated-code && uv run mcp_server.py
+```
+
+---
+
+### SCRAM-SHA-256
+
+```bash
+# 1. Generate SSL certificates (broker only — run once)
+cd docker && bash gen-certs.sh
+
+# 2. Start the stack
+bash launch.sh   # option 2
+
+# 3. Generate the MCP server
+./scripts/run_asyncapi_generator.sh yaml/streets-lights.yaml scram-connections
+
+# 4. Configure generated-code/.env
+KAFKA_USERNAME=testuser
+KAFKA_PASSWORD=testpassword
+KAFKA_SSL_CA_LOCATION=../docker/certs/ca.crt
+SCHEMA_REGISTRY_URL=http://localhost:8081
+SCHEMA_REGISTRY_USERNAME=admin
+SCHEMA_REGISTRY_PASSWORD=testpassword
+
+# 5. Run
+cd generated-code && uv run mcp_server.py
+```
+
+---
+
+### OAuth2 (client_credentials)
+
+```bash
+# 1. Set up the Keycloak realm
+cp docker/keycloak-realm.example.json docker/keycloak-realm.json
+# Edit keycloak-realm.json and replace "CHANGE_ME" with a real client secret
+
+# 2. Generate SSL certificates (broker only — run once)
+cd docker && bash gen-certs.sh
+
+# 3. Start the stack
+bash launch.sh   # option 3
+
+# 4. Generate the MCP server
+./scripts/run_asyncapi_generator.sh yaml/streets-lights-oauth.yaml oauth-connections
+
+# 5. Configure generated-code/.env
+KAFKA_SSL_CA_LOCATION=../docker/certs/ca.crt
+SCHEMA_REGISTRY_URL=http://localhost:8081
+SCHEMA_REGISTRY_USERNAME=admin
+SCHEMA_REGISTRY_PASSWORD=testpassword
+OAUTH_CLIENT_ID=mcp-app
+OAUTH_CLIENT_SECRET=<your-secret>
+OAUTH_TOKEN_URL=http://localhost:9090/realms/masorange/protocol/openid-connect/token
+
+# 6. Run
+cd generated-code && uv run mcp_server.py
+```
+
+---
+
 ## Security support
 
 Security configuration is read from the spec's `servers[].security` field and embedded in the generated `mcp_server.py`.
@@ -241,14 +314,6 @@ KAFKA_SSL_CA_LOCATION=../docker/certs/ca.crt
 cd consumer/
 uv run run_consumer.py
 ```
-
----
-
-## Extended security support
-
-The generator also supports `X509` (mTLS) and `oauth2/authorizationCode`, including a dedicated Docker stack (`docker-compose-mtls.yml`) and a browser-based token flow (`oauth_flow.py`). These were implemented to cover the full spectrum of Kafka security mechanisms but are not the focus of this project.
-
-In an MCP server context, `client_credentials` is the practical choice for machine-to-machine authentication. `authorization_code` requires a human to log in via browser, which breaks the autonomous nature of an LLM-driven producer. mTLS adds operational complexity — certificate rotation, client cert distribution — without significant advantage over SCRAM in a local environment.
 
 ---
 
